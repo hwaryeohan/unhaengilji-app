@@ -1,0 +1,685 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0b6b5a">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>운행일지</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=Noto+Sans+KR:wght@400;500;700&display=swap">
+<style>
+/* Layout: 한 화면 폰 앱. 위에서부터 오늘 요약 → 입력 → 오늘 기록. 계기판 숫자는 모노 서체로 크게. */
+:root{
+  --bg:#edf0ec; --surface:#fafbf9; --ink:#15201b; --muted:#59675f; --line:#d3dad3;
+  --accent:#0b6b5a; --accent-ink:#ffffff; --accent-soft:#d9ece6;
+  --warn:#8a4e00; --warn-bg:#fbefd2; --danger:#b3261e; --scrim:rgba(10,18,14,.45);
+  --sans:"Noto Sans KR",system-ui,-apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0e1411; --surface:#161f1a; --ink:#e6eee8; --muted:#90a198; --line:#27342d;
+    --accent:#4fd1b4; --accent-ink:#06241d; --accent-soft:#16352d;
+    --warn:#f0b44c; --warn-bg:#3a2c10; --danger:#ff8f86; --scrim:rgba(0,0,0,.6);
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0e1411; --surface:#161f1a; --ink:#e6eee8; --muted:#90a198; --line:#27342d;
+  --accent:#4fd1b4; --accent-ink:#06241d; --accent-soft:#16352d;
+  --warn:#f0b44c; --warn-bg:#3a2c10; --danger:#ff8f86; --scrim:rgba(0,0,0,.6);
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{
+  background:var(--bg); color:var(--ink); font:16px/1.5 var(--sans);
+  padding-block:14px 96px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));
+  padding-right:max(16px,env(safe-area-inset-right,0px));
+  -webkit-text-size-adjust:100%;
+}
+button,input{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.wrap{max-width:560px;margin:0 auto;display:flex;flex-direction:column;gap:16px}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+
+header{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
+h1{margin:0;font-size:22px;font-weight:700;letter-spacing:-.01em}
+.date{color:var(--muted);font-size:14px}
+.tabs{display:grid;grid-template-columns:1fr 1fr;background:var(--line);border-radius:12px;padding:3px;gap:3px}
+.tabs button{border:0;background:transparent;border-radius:9px;padding:10px;font-weight:500;color:var(--muted)}
+.tabs button[aria-selected="true"]{background:var(--surface);color:var(--ink);font-weight:700;box-shadow:0 1px 2px rgba(0,0,0,.12)}
+
+.tile{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px;display:flex;flex-direction:column;gap:6px}
+.eyebrow{font-size:13px;color:var(--muted);letter-spacing:.04em}
+.big{display:flex;align-items:baseline;gap:8px;min-width:0}
+.big .n{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:54px;line-height:1.05;font-weight:600;letter-spacing:-.02em}
+.big .u{color:var(--muted);font-size:18px}
+.route{font-size:15px;overflow-wrap:anywhere}
+.route .t{color:var(--muted)}
+.hint{color:var(--muted);font-size:14px}
+
+.entry{display:flex;flex-direction:column;gap:10px}
+.entry input[type=text]{width:100%;min-width:0;padding:15px 14px;font-size:19px;border:2px solid var(--line);border-radius:12px;background:var(--surface)}
+.entry input[type=text]:focus{border-color:var(--accent);outline:none}
+.entry .ph{display:block}
+.btnrow{display:flex;gap:10px}
+.btn{flex:1;min-height:52px;border-radius:12px;border:2px solid var(--line);background:var(--surface);font-weight:700;padding:0 14px;display:inline-flex;align-items:center;justify-content:center;gap:8px}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.listening{background:var(--danger);border-color:var(--danger);color:#fff}
+.btn.mic-big{flex:0 0 46%;min-height:68px;font-size:19px;background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
+.btn.mic-big.listening{color:#fff}
+#save-btn{min-height:68px;font-size:19px}
+.btn:disabled{opacity:.45;cursor:default}
+.btn.small{flex:none;min-height:42px;font-weight:500;font-size:15px}
+.preview{min-height:24px;font-size:15px;color:var(--muted)}
+.preview.ok{color:var(--ink)}
+.preview.err{color:var(--warn)}
+.preview b{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:6px 12px;font-size:14px}
+.tip{font-size:13px;color:var(--muted)}
+.warnbox{background:var(--warn-bg);color:var(--warn);border-radius:10px;padding:10px 12px;font-size:14px}
+
+.list{list-style:none;margin:0;padding:0;background:var(--surface);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.list li+li{border-top:1px solid var(--line)}
+.row{width:100%;text-align:left;background:transparent;border:0;display:grid;grid-template-columns:54px minmax(0,1fr) auto;gap:10px;padding:14px 14px;align-items:start}
+.row .t{font-family:var(--mono);font-size:14px;color:var(--muted);padding-top:2px}
+.row .place{font-size:17px;font-weight:500;overflow-wrap:anywhere}
+.row .num{text-align:right;display:flex;flex-direction:column;align-items:flex-end}
+.row .num b{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:17px;font-weight:600}
+.row .num small{font-family:var(--mono);font-variant-numeric:tabular-nums;color:var(--muted);font-size:13px}
+.row .num small.neg{color:var(--warn);font-weight:600}
+.badge{display:inline-block;font-size:12px;font-weight:700;padding:1px 8px;border-radius:999px;margin-left:8px;vertical-align:2px;background:var(--line);color:var(--muted)}
+.badge.start{background:var(--accent);color:var(--accent-ink)}
+.badge.end{background:var(--ink);color:var(--bg)}
+.badge.warn{background:var(--warn-bg);color:var(--warn)}
+.empty{background:var(--surface);border:1px dashed var(--line);border-radius:14px;padding:18px;color:var(--muted);font-size:15px;display:flex;flex-direction:column;gap:6px}
+.empty b{color:var(--ink);font-family:var(--mono);font-weight:600}
+
+.monthbar{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.monthbar h2{margin:0;font-size:18px}
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.dayrow{width:100%;text-align:left;background:transparent;border:0;display:grid;grid-template-columns:64px minmax(0,1fr) auto;gap:10px;padding:14px;align-items:center}
+.dayrow .dd{font-family:var(--mono);font-weight:600}
+.dayrow .dd small{font-family:var(--sans);color:var(--muted);font-weight:400}
+.dayrow .rt{overflow-wrap:anywhere;font-size:15px}
+.dayrow .rt small{display:block;color:var(--muted);font-size:13px}
+.dayrow .km{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:19px;font-weight:600}
+.detail{border-top:1px solid var(--line);background:var(--bg)}
+.detail .row{padding-left:14px}
+
+.tools{display:flex;flex-direction:column;gap:10px}
+.tools h3{margin:0;font-size:15px}
+.tools .btnrow{flex-wrap:wrap}
+.copybox{width:100%;min-height:120px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink);font:13px/1.5 var(--mono);padding:10px}
+
+#choice{position:fixed;inset:0;background:var(--scrim);display:flex;align-items:flex-end;justify-content:center;z-index:25}
+#choice p{margin:0;font-size:16px}
+#choice .btn{flex:none}
+#sheet{position:fixed;inset:0;background:var(--scrim);display:flex;align-items:flex-end;justify-content:center;z-index:20}
+#sheet[hidden]{display:none}
+.panel{background:var(--surface);width:100%;max-width:560px;border-radius:18px 18px 0 0;padding:18px 16px;padding-bottom:calc(18px + env(safe-area-inset-bottom,0px));padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:12px}
+.panel h2{margin:0;font-size:18px}
+.field{display:flex;flex-direction:column;gap:4px;font-size:14px;color:var(--muted)}
+.field input{padding:12px;font-size:17px;border:2px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);width:100%;min-width:0}
+.btn.danger{color:var(--danger);border-color:var(--danger)}
+
+#toast{position:fixed;left:0;right:0;bottom:0;z-index:30;display:flex;justify-content:center;pointer-events:none;
+  padding:12px max(16px,env(safe-area-inset-right,0px)) calc(12px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px))}
+#toast .in{pointer-events:auto;background:var(--ink);color:var(--bg);border-radius:12px;padding:12px 14px;display:flex;gap:14px;align-items:center;max-width:560px;width:100%;justify-content:space-between;box-shadow:0 6px 24px rgba(0,0,0,.28)}
+#toast[hidden]{display:none}
+#toast button{background:transparent;border:0;color:var(--bg);font-weight:700;padding:8px;text-decoration:underline;white-space:nowrap}
+[hidden]{display:none!important}
+@media (prefers-reduced-motion:no-preference){.btn{transition:background .15s,border-color .15s}}
+body{margin:0}
+:root{color-scheme:light}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){color-scheme:dark}}
+</style>
+</head>
+<body>
+
+<div class="wrap" id="app">
+  <header>
+    <h1>운행일지</h1>
+    <span class="date" id="today-label"></span>
+  </header>
+
+  <div class="tabs" role="tablist" aria-label="화면 선택">
+    <button role="tab" id="tab-today" aria-selected="true" aria-controls="view-today">오늘</button>
+    <button role="tab" id="tab-log" aria-selected="false" aria-controls="view-log">월별 기록</button>
+  </div>
+
+  <div id="storewarn" class="warnbox" hidden>이 브라우저에서 저장이 막혀 있어요. 지금 기록은 화면을 닫으면 사라져요. 월별 기록에서 백업을 받아 두세요.</div>
+
+  <!-- 오늘 -->
+  <section id="view-today" class="wrap" role="tabpanel" aria-labelledby="tab-today" style="gap:16px">
+    <div class="tile" id="today-tile"></div>
+
+    <form class="entry" id="entry-form" autocomplete="off">
+      <label for="entry" class="eyebrow">장소와 계기판 숫자를 말하거나 입력</label>
+      <input type="text" id="entry" name="entry" placeholder="금곡역 4만 1230" enterkeyhint="done" autocomplete="off" autocapitalize="off" spellcheck="false" list="places">
+      <datalist id="places"></datalist>
+      <div class="preview" id="preview" aria-live="polite"></div>
+      <div class="btnrow">
+        <button type="button" class="btn mic-big" id="mic">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+          <span id="mic-label">말하기</span>
+        </button>
+        <button type="submit" class="btn primary" id="save-btn" disabled>기록</button>
+      </div>
+      <div class="chips" id="chips" aria-label="최근 장소"></div>
+      <div class="tip" id="mic-tip">입력칸을 누르고 키보드의 마이크 버튼으로 말해도 돼요. 말한 뒤 「기록」을 누르세요.</div>
+    </form>
+
+    <div id="today-list"></div>
+  </section>
+
+  <!-- 월별 기록 -->
+  <section id="view-log" class="wrap" role="tabpanel" aria-labelledby="tab-log" hidden style="gap:16px">
+    <div class="monthbar">
+      <button class="btn small" id="m-prev" aria-label="이전 달">‹ 이전</button>
+      <h2 id="m-label"></h2>
+      <button class="btn small" id="m-next" aria-label="다음 달">다음 ›</button>
+    </div>
+    <div class="stats">
+      <div class="tile"><span class="eyebrow">이달 주행</span><span class="big"><span class="n" id="m-km">0</span><span class="u">km</span></span></div>
+      <div class="tile"><span class="eyebrow">운행한 날</span><span class="big"><span class="n" id="m-days">0</span><span class="u">일</span></span></div>
+    </div>
+    <div id="log-list"></div>
+
+    <div class="tools">
+      <h3>월말 표 내보내기</h3>
+      <div class="btnrow">
+        <button class="btn small" id="x-summary">일별 표 저장 (CSV)</button>
+        <button class="btn small" id="x-detail">상세 기록 저장 (CSV)</button>
+        <button class="btn small" id="x-copy">일별 표 복사</button>
+      </div>
+      <div class="tip">CSV는 엑셀에서 바로 열려요. 복사한 표는 엑셀이나 구글 시트에 붙여 넣으면 칸에 맞춰 들어가요.</div>
+      <textarea class="copybox" id="copybox" readonly hidden aria-label="복사할 내용"></textarea>
+      <h3>백업</h3>
+      <div class="btnrow">
+        <button class="btn small" id="b-save">전체 백업 저장</button>
+        <label class="btn small" for="b-file" style="cursor:pointer">백업 불러오기</label>
+        <input type="file" id="b-file" accept=".json,application/json" hidden>
+      </div>
+      <div class="tip">기록은 이 폰의 브라우저에만 저장돼요. 브라우저 데이터를 지우거나 폰을 바꾸기 전에 백업해 두세요.</div>
+    </div>
+  </section>
+</div>
+
+<div id="sheet" hidden>
+  <form class="panel" id="edit-form" role="dialog" aria-modal="true" aria-labelledby="edit-title">
+    <h2 id="edit-title">기록 고치기</h2>
+    <label class="field">장소<input type="text" id="e-place" autocomplete="off"></label>
+    <label class="field">계기판 (km)<input type="text" id="e-odo" inputmode="numeric" autocomplete="off"></label>
+    <label class="field">날짜와 시간<input type="datetime-local" id="e-time"></label>
+    <div class="preview err" id="e-err" aria-live="polite"></div>
+    <div class="btnrow">
+      <button type="button" class="btn danger" id="e-del">삭제</button>
+      <button type="button" class="btn" id="e-cancel">취소</button>
+      <button type="submit" class="btn primary">저장</button>
+    </div>
+  </form>
+</div>
+
+<div id="choice" hidden>
+  <div class="panel" role="alertdialog" aria-modal="true" aria-labelledby="c-title">
+    <h2 id="c-title">앞 기록보다 거리가 짧아요</h2>
+    <p id="c-msg"></p>
+    <div class="btnrow" style="flex-direction:column">
+      <button type="button" class="btn primary" id="c-insert">앞 경유로 바꾸기 (거리 순서대로 끼워 넣기)</button>
+      <button type="button" class="btn" id="c-keep">그대로 두기 (마지막 기록으로 저장)</button>
+      <button type="button" class="btn" id="c-cancel">취소 (다시 말하기)</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" hidden aria-live="polite"><div class="in"><span id="toast-msg"></span><button type="button" id="toast-act" hidden></button></div></div>
+
+<script>
+/*PARSER-START*/
+var HAN_D={'영':0,'공':0,'일':1,'이':2,'삼':3,'사':4,'오':5,'육':6,'칠':7,'팔':8,'구':9};
+var HAN_U={'십':10,'백':100,'천':1000};
+function evalNum(str){
+  str=String(str).replace(/[,\s]/g,'');
+  if(!str) return NaN;
+  if(/^\d+(\.\d+)?$/.test(str)) return Math.round(parseFloat(str));
+  var total=0,section=0,num='',ch,i;
+  for(i=0;i<str.length;i++){
+    ch=str.charAt(i);
+    if(/[0-9]/.test(ch)) num+=ch;
+    else if(ch in HAN_D) num+=HAN_D[ch];
+    else if(ch in HAN_U){ section+=(num?parseInt(num,10):1)*HAN_U[ch]; num=''; }
+    else if(ch==='만'){ total+=((section+(num?parseInt(num,10):0))||1)*10000; section=0; num=''; }
+    else if(ch!=='.') return NaN;
+  }
+  return total+section+(num?parseInt(num,10):0);
+}
+function parseEntry(raw){
+  var s=String(raw||'').replace(/ /g,' ').trim();
+  if(!s) return {empty:true};
+  s=s.replace(/\s*(km|㎞|킬로미터|킬로|키로)\s*$/i,'').trim();
+  var toks=s.split(/\s+/), numTok=/^[0-9,.만천백십일이삼사오육칠팔구영공]+$/, i=toks.length;
+  while(i>0 && numTok.test(toks[i-1])) i--;
+  var numStr=toks.slice(i).join(''), place=toks.slice(0,i).join(' ');
+  if(!numStr) return {error:'계기판 숫자가 안 들려요. 예: 금곡역 4만 1230'};
+  var odo=evalNum(numStr);
+  if(!isFinite(odo)||odo<=0||odo>=10000000) return {error:'계기판 숫자를 확인해 주세요.'};
+  var tm=place.match(/(오전|오후)?\s*(\d{1,2})\s*시(?:\s*(\d{1,2})\s*분|\s*(반))?/), time=null;
+  if(tm){
+    var h=parseInt(tm[2],10), mi=tm[4]?30:(tm[3]?parseInt(tm[3],10):0);
+    if(tm[1]==='오후'&&h<12) h+=12;
+    if(tm[1]==='오전'&&h===12) h=0;
+    if(h<=23&&mi<=59){time={h:h,m:mi}; place=place.replace(tm[0],' ').replace(/\s+/g,' ').trim();}
+  }
+  if(!place) return {error:'장소 이름을 앞에 말해 주세요. 예: 금곡역 4만 1230'};
+  return {place:place,odo:odo,time:time};
+}
+/*PARSER-END*/
+
+(function(){
+'use strict';
+var KEY='unhaengilji.v1';
+var records=[], memOnly=false;
+var tab='today', monthRef=new Date(), openDay=null, editId=null, delArmed=false;
+var dict=null, dl=null, finalText='', autoTimer=null, toastTimer=null;
+
+function $(s){return document.querySelector(s);}
+function pad(n){return (n<10?'0':'')+n;}
+function esc(s){return String(s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+function fmt(n){return Number(n).toLocaleString('ko-KR');}
+function dkey(ts){var d=new Date(ts);return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());}
+function hhmm(ts){var d=new Date(ts);return pad(d.getHours())+':'+pad(d.getMinutes());}
+var WD='일월화수목금토';
+function wd(key){var p=key.split('-');return WD.charAt(new Date(+p[0],+p[1]-1,+p[2]).getDay());}
+function localInput(ts){var d=new Date(ts);return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())+'T'+pad(d.getHours())+':'+pad(d.getMinutes());}
+
+function load(){
+  try{var s=localStorage.getItem(KEY);if(s){var a=JSON.parse(s);if(Array.isArray(a)) return a.filter(validRec);}}catch(e){}
+  return [];
+}
+function validRec(r){return r&&typeof r.ts==='number'&&typeof r.odo==='number'&&typeof r.place==='string'&&r.place;}
+function persist(){
+  records.sort(function(a,b){return a.ts-b.ts;});
+  try{localStorage.setItem(KEY,JSON.stringify(records));memOnly=false;}catch(e){memOnly=true;}
+  $('#storewarn').hidden=!memOnly;
+  try{if(navigator.storage&&navigator.storage.persist) navigator.storage.persist();}catch(e){}
+}
+function newId(){return Date.now().toString(36)+Math.random().toString(36).slice(2,6);}
+
+function groupDays(list){
+  var g={};
+  list.forEach(function(r){var k=dkey(r.ts);(g[k]=g[k]||[]).push(r);});
+  Object.keys(g).forEach(function(k){g[k].sort(function(a,b){return (a.odo-b.odo)||(a.ts-b.ts);});});
+  return g;
+}
+function stats(arr){
+  var f=arr[0], l=arr[arr.length-1], two=arr.length>1;
+  return {first:f,last:l,two:two,total:two?l.odo-f.odo:0,vias:arr.slice(1,-1)};
+}
+
+/* ---------- 화면 그리기 ---------- */
+function mismatchSet(arr){
+  var bad={}, i;
+  for(i=1;i<arr.length;i++){if(arr[i].ts<arr[i-1].ts){bad[arr[i].id]=1;bad[arr[i-1].id]=1;}}
+  return bad;
+}
+function entriesHtml(arr){
+  var bad=mismatchSet(arr);
+  return '<ul class="list">'+arr.map(function(r,i){
+    var role=i===0?'start':(i===arr.length-1?'end':'via');
+    var label=role==='start'?'출발':(role==='end'?'도착':'경유');
+    var seg=i>0?r.odo-arr[i-1].odo:null;
+    var segHtml=seg===null?'<small>&nbsp;</small>':'<small class="'+(seg<0?'neg':'')+'">'+(seg>=0?'+':'')+fmt(seg)+' km'+(seg<0?' 확인':'')+'</small>';
+    return '<li><button type="button" class="row" data-id="'+esc(r.id)+'" aria-label="'+esc(label+' '+r.place+' '+r.odo+'킬로, 고치기')+'">'+
+      '<span class="t">'+hhmm(r.ts)+'</span>'+
+      '<span><span class="place">'+esc(r.place)+'</span><span class="badge '+role+'">'+label+'</span>'+(bad[r.id]?'<span class="badge warn">시간 확인</span>':'')+'</span>'+
+      '<span class="num"><b>'+fmt(r.odo)+'</b>'+segHtml+'</span></button></li>';
+  }).join('')+'</ul>';
+}
+
+function renderToday(){
+  var now=new Date(), key=dkey(now.getTime());
+  $('#today-label').textContent=(now.getMonth()+1)+'월 '+now.getDate()+'일 '+wd(key)+'요일';
+  var arr=groupDays(records)[key]||[];
+  var tile=$('#today-tile'), list=$('#today-list');
+  if(!arr.length){
+    tile.innerHTML='<span class="eyebrow">오늘 운행</span><span class="big"><span class="n">0</span><span class="u">km</span></span><span class="hint">첫 기록이 오늘의 출발이 돼요.</span>';
+    list.innerHTML='<div class="empty"><span>아직 오늘 기록이 없어요.</span><span>출발할 때 <b>금곡역 4만 1230</b> 처럼 장소와 계기판 숫자를 말하면 한 줄이 쌓여요.</span><span>마지막으로 말한 기록이 도착이 되고, 그 사이는 경유지가 돼요.</span></div>';
+    return;
+  }
+  var s=stats(arr);
+  tile.innerHTML='<span class="eyebrow">오늘 운행</span>'+
+    '<span class="big"><span class="n">'+(s.two?fmt(s.total):'0')+'</span><span class="u">km</span></span>'+
+    '<span class="route">'+esc(s.first.place)+(s.two?' → '+esc(s.last.place):'')+' <span class="t mono">· '+hhmm(s.first.ts)+(s.two?'–'+hhmm(s.last.ts):'')+'</span></span>'+
+    (s.two?'<span class="hint">경유 '+s.vias.length+'곳 · 계기판 '+fmt(s.first.odo)+' → '+fmt(s.last.odo)+'</span>':'<span class="hint">다음 기록부터 거리가 계산돼요.</span>');
+  var nBad=Object.keys(mismatchSet(arr)).length;
+  list.innerHTML=(nBad?'<div class="warnbox" style="margin-bottom:12px">시간 순서와 계기판 순서가 달라요. 계기판 순서를 기준으로 정리했어요. 「시간 확인」이 붙은 기록의 시간이나 숫자를 확인하세요.</div>':'')+entriesHtml(arr);
+}
+
+function monthKeyPrefix(){return monthRef.getFullYear()+'-'+pad(monthRef.getMonth()+1)+'-';}
+function monthDays(){
+  var g=groupDays(records), p=monthKeyPrefix();
+  var keys=Object.keys(g).filter(function(k){return k.indexOf(p)===0;}).sort();
+  return keys.map(function(k){return {key:k,arr:g[k],st:stats(g[k])};});
+}
+function renderLog(){
+  $('#m-label').textContent=monthRef.getFullYear()+'년 '+(monthRef.getMonth()+1)+'월';
+  var days=monthDays(), sum=0;
+  days.forEach(function(d){sum+=d.st.total;});
+  $('#m-km').textContent=fmt(sum);
+  $('#m-days').textContent=days.length;
+  var host=$('#log-list');
+  if(!days.length){host.innerHTML='<div class="empty"><span>이 달에는 기록이 없어요.</span></div>';return;}
+  host.innerHTML='<ul class="list">'+days.slice().reverse().map(function(d){
+    var st=d.st, open=openDay===d.key, p=d.key.split('-');
+    var route=esc(st.first.place)+(st.two?' → '+esc(st.last.place):'');
+    var sub=st.two?(st.vias.length?'경유 '+st.vias.length+'곳':'경유 없음'):'도착 기록 없음';
+    if(Object.keys(mismatchSet(d.arr)).length) sub+=' · 시간 확인';
+    return '<li><button type="button" class="dayrow" data-day="'+d.key+'" aria-expanded="'+open+'">'+
+      '<span class="dd">'+p[1]+'/'+p[2]+' <small>'+wd(d.key)+'</small></span>'+
+      '<span class="rt">'+route+'<small>'+sub+'</small></span>'+
+      '<span class="km">'+(st.two?fmt(st.total):'-')+'</span></button>'+
+      (open?'<div class="detail">'+entriesHtml(d.arr)+'</div>':'')+'</li>';
+  }).join('')+'</ul>';
+}
+
+function renderChips(){
+  var seen={}, out=[], i;
+  for(i=records.length-1;i>=0&&out.length<5;i--){
+    var p=records[i].place;
+    if(!seen[p]){seen[p]=1;out.push(p);}
+  }
+  $('#chips').innerHTML=out.map(function(p){return '<button type="button" class="chip" data-place="'+esc(p)+'">'+esc(p)+'</button>';}).join('');
+  var all={}, opts='';
+  records.forEach(function(r){all[r.place]=1;});
+  Object.keys(all).forEach(function(p){opts+='<option value="'+esc(p)+'"></option>';});
+  $('#places').innerHTML=opts;
+}
+function renderAll(){
+  renderToday(); renderLog(); renderChips(); updatePreview();
+}
+
+/* ---------- 입력 ---------- */
+function updatePreview(){
+  var v=$('#entry').value, p=parseEntry(v), box=$('#preview'), btn=$('#save-btn');
+  if(p.empty){box.className='preview';box.textContent='';btn.disabled=true;return;}
+  if(p.error){box.className='preview err';box.textContent=p.error;btn.disabled=true;return;}
+  box.className='preview ok';
+  box.innerHTML='장소 <b>'+esc(p.place)+'</b> · 계기판 <b>'+fmt(p.odo)+'</b> km'+(p.time?' · 시간 <b>'+pad(p.time.h)+':'+pad(p.time.m)+'</b>':'');
+  btn.disabled=false;
+}
+var pendingEntry=null;
+function timeToTs(t){var d=new Date();d.setHours(t.h,t.m,0,0);return d.getTime();}
+function insertTs(odo){
+  var sorted=records.slice().sort(function(a,b){return a.ts-b.ts;}), before=null, after=null, i;
+  for(i=0;i<sorted.length;i++){if(sorted[i].odo<=odo) before=sorted[i];}
+  if(!before) return sorted.length?sorted[0].ts-1000:Date.now();
+  for(i=0;i<sorted.length;i++){if(sorted[i].ts>before.ts){after=sorted[i];break;}}
+  return after?Math.floor((before.ts+after.ts)/2):Date.now();
+}
+function askOrder(p,prev){
+  pendingEntry=p;
+  $('#c-msg').textContent='바로 앞 기록은 '+prev.place+' '+fmt(prev.odo)+' km 인데, 지금 말한 '+p.place+' '+fmt(p.odo)+' km 가 더 작아요. 어떻게 할까요?';
+  $('#choice').hidden=false; $('#c-insert').focus();
+}
+function closeChoice(){$('#choice').hidden=true;pendingEntry=null;}
+$('#c-insert').onclick=function(){var p=pendingEntry;closeChoice();if(p) commit(p,'insert');};
+$('#c-keep').onclick=function(){var p=pendingEntry;closeChoice();if(p) commit(p,'keep');};
+$('#c-cancel').onclick=closeChoice;
+function commit(p,mode){
+  var prev=null, now=Date.now();
+  records.forEach(function(r){if(r.ts<=now) prev=r;});
+  var rec={id:newId(),ts:p.time?timeToTs(p.time):(mode==='insert'?insertTs(p.odo):now),place:p.place,odo:p.odo};
+  records.push(rec); persist();
+  $('#entry').value=''; finalText='';
+  renderAll();
+  var msg='저장했어요 · '+p.place+' '+fmt(p.odo)+' km';
+  if(mode==='insert') msg='거리 순서대로 끼워 넣었어요 · '+p.place+' '+fmt(p.odo)+' km';
+  var dayArr=groupDays(records)[dkey(rec.ts)]||[];
+  if(mismatchSet(dayArr)[rec.id]) msg='시간과 거리가 서로 안 맞아요. 계기판 순서로 정리했어요 · '+p.place+' '+fmt(p.odo)+' km';
+  toast(msg,'되돌리기',function(){
+    records=records.filter(function(r){return r.id!==rec.id;}); persist(); renderAll();
+  });
+}
+$('#entry-form').addEventListener('submit',function(e){
+  e.preventDefault();
+  var p=parseEntry($('#entry').value);
+  if(p.place) commit(p);
+});
+$('#entry').addEventListener('input',function(){finalText=this.value;updatePreview();});
+$('#chips').addEventListener('click',function(e){
+  var b=e.target.closest('[data-place]'); if(!b) return;
+  var inp=$('#entry'); inp.value=b.getAttribute('data-place')+' '; finalText=inp.value; updatePreview(); inp.focus();
+});
+
+/* ---------- 알림 ---------- */
+function toast(msg,actLabel,actFn){
+  clearTimeout(toastTimer);
+  $('#toast-msg').textContent=msg;
+  var a=$('#toast-act');
+  if(actLabel){a.hidden=false;a.textContent=actLabel;a.onclick=function(){actFn();hideToast();};}
+  else{a.hidden=true;a.onclick=null;}
+  $('#toast').hidden=false;
+  toastTimer=setTimeout(hideToast,actLabel?7000:4000);
+}
+function hideToast(){$('#toast').hidden=true;}
+
+/* ---------- 탭과 월 이동 ---------- */
+function setTab(t){
+  tab=t;
+  $('#view-today').hidden=t!=='today'; $('#view-log').hidden=t!=='log';
+  $('#tab-today').setAttribute('aria-selected',t==='today');
+  $('#tab-log').setAttribute('aria-selected',t==='log');
+  if(t==='log') renderLog();
+}
+$('#tab-today').onclick=function(){setTab('today');};
+$('#tab-log').onclick=function(){setTab('log');};
+$('#m-prev').onclick=function(){monthRef=new Date(monthRef.getFullYear(),monthRef.getMonth()-1,1);openDay=null;renderLog();};
+$('#m-next').onclick=function(){monthRef=new Date(monthRef.getFullYear(),monthRef.getMonth()+1,1);openDay=null;renderLog();};
+$('#log-list').addEventListener('click',function(e){
+  var r=e.target.closest('.row');
+  if(r){openEdit(r.getAttribute('data-id'));return;}
+  var d=e.target.closest('[data-day]');
+  if(d){var k=d.getAttribute('data-day');openDay=openDay===k?null:k;renderLog();}
+});
+$('#today-list').addEventListener('click',function(e){
+  var r=e.target.closest('.row'); if(r) openEdit(r.getAttribute('data-id'));
+});
+
+/* ---------- 고치기 ---------- */
+function openEdit(id){
+  var r=records.filter(function(x){return x.id===id;})[0]; if(!r) return;
+  editId=id; delArmed=false;
+  $('#e-place').value=r.place; $('#e-odo').value=r.odo; $('#e-time').value=localInput(r.ts);
+  $('#e-err').textContent=''; $('#e-del').textContent='삭제';
+  $('#sheet').hidden=false; $('#e-place').focus();
+}
+function closeEdit(){$('#sheet').hidden=true;editId=null;}
+$('#e-cancel').onclick=closeEdit;
+$('#sheet').addEventListener('click',function(e){if(e.target===this) closeEdit();});
+document.addEventListener('keydown',function(e){if(e.key==='Escape'&&!$('#sheet').hidden) closeEdit();});
+$('#e-del').onclick=function(){
+  if(!delArmed){delArmed=true;this.textContent='한 번 더 누르면 삭제';return;}
+  records=records.filter(function(r){return r.id!==editId;}); persist(); closeEdit(); renderAll(); toast('삭제했어요.');
+};
+$('#edit-form').addEventListener('submit',function(e){
+  e.preventDefault();
+  var place=$('#e-place').value.trim(), odo=evalNum($('#e-odo').value), ts=new Date($('#e-time').value).getTime();
+  if(!place){$('#e-err').textContent='장소를 입력해 주세요.';return;}
+  if(!isFinite(odo)||odo<=0){$('#e-err').textContent='계기판 숫자를 확인해 주세요.';return;}
+  if(!isFinite(ts)){$('#e-err').textContent='날짜와 시간을 확인해 주세요.';return;}
+  records.forEach(function(r){if(r.id===editId){r.place=place;r.odo=odo;r.ts=ts;}});
+  persist(); closeEdit(); renderAll(); toast('고쳤어요.');
+});
+
+/* ---------- 내보내기 ---------- */
+function csvCell(v){v=String(v==null?'':v);return /[",\n\r]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;}
+function toCsv(rows){return '﻿'+rows.map(function(r){return r.map(csvCell).join(',');}).join('\r\n');}
+function toTsv(rows){return rows.map(function(r){return r.map(function(c){return String(c==null?'':c).replace(/[\t\r\n]+/g,' ');}).join('\t');}).join('\n');}
+function summaryRows(){
+  var rows=[['날짜','요일','출발지','경유지','도착지','출발 계기판(km)','도착 계기판(km)','주행거리(km)','출발 시각','도착 시각']];
+  monthDays().forEach(function(d){
+    var s=d.st;
+    rows.push([d.key,wd(d.key),s.first.place,s.vias.map(function(v){return v.place;}).join(' / '),s.two?s.last.place:'',s.first.odo,s.two?s.last.odo:'',s.two?s.total:'',hhmm(s.first.ts),s.two?hhmm(s.last.ts):'']);
+  });
+  return rows;
+}
+function detailRows(){
+  var rows=[['날짜','순번','구분','시간','장소','계기판(km)','구간 거리(km)']];
+  monthDays().forEach(function(d){
+    d.arr.forEach(function(r,i){
+      var role=i===0?'출발':(i===d.arr.length-1?'도착':'경유');
+      rows.push([d.key,i+1,role,hhmm(r.ts),r.place,r.odo,i>0?r.odo-d.arr[i-1].odo:'']);
+    });
+  });
+  return rows;
+}
+function monthTag(){return monthRef.getFullYear()+'-'+pad(monthRef.getMonth()+1);}
+function copyText(text){
+  var box=$('#copybox');
+  function fallback(){box.hidden=false;box.value=text;box.focus();box.select();toast('아래 칸의 내용을 길게 눌러 복사하세요.');}
+  try{
+    navigator.clipboard.writeText(text).then(function(){toast('복사했어요. 엑셀이나 시트에 붙여 넣으세요.');},fallback);
+  }catch(e){fallback();}
+}
+function saveFile(name,data,fallbackText){
+  if(!dl){
+    try{
+      var mime=/\.json$/.test(name)?'application/json':'text/csv';
+      var url=URL.createObjectURL(new Blob([data],{type:mime+';charset=utf-8'}));
+      var a=document.createElement('a'); a.href=url; a.download=name; document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(function(){URL.revokeObjectURL(url);},4000);
+      toast('파일을 저장했어요. 다운로드 폴더를 확인하세요.');
+    }catch(e){copyText(fallbackText||data);}
+    return;
+  }
+  dl.save({filename:name,data:data}).then(function(){toast('저장 요청을 보냈어요.');},function(err){
+    if(err&&err.code==='declined') return;
+    toast('이 화면에서는 파일 저장이 안 돼요. 복사 버튼을 써 보세요.');
+  });
+}
+function needData(){if(!monthDays().length){toast('이 달에는 내보낼 기록이 없어요.');return false;}return true;}
+$('#x-summary').onclick=function(){if(needData()) saveFile('운행일지_'+monthTag()+'_일별.csv',toCsv(summaryRows()),toTsv(summaryRows()));};
+$('#x-detail').onclick=function(){if(needData()) saveFile('운행일지_'+monthTag()+'_상세.csv',toCsv(detailRows()),toTsv(detailRows()));};
+$('#x-copy').onclick=function(){if(needData()) copyText(toTsv(summaryRows()));};
+$('#b-save').onclick=function(){
+  if(!records.length){toast('백업할 기록이 없어요.');return;}
+  var d=new Date(), json=JSON.stringify({app:'unhaengilji',version:1,records:records},null,1);
+  saveFile('운행일지_백업_'+d.getFullYear()+pad(d.getMonth()+1)+pad(d.getDate())+'.json',json,json);
+};
+$('#b-file').addEventListener('change',function(){
+  var f=this.files&&this.files[0]; if(!f) return;
+  var rd=new FileReader();
+  rd.onload=function(){
+    try{
+      var j=JSON.parse(rd.result), list=Array.isArray(j)?j:j.records, added=0, have={};
+      if(!Array.isArray(list)) throw new Error('x');
+      records.forEach(function(r){have[r.ts+'|'+r.odo+'|'+r.place]=1;});
+      list.forEach(function(r){
+        if(!validRec(r)) return;
+        var k=r.ts+'|'+r.odo+'|'+r.place;
+        if(have[k]) return;
+        have[k]=1; records.push({id:r.id||newId(),ts:r.ts,odo:r.odo,place:r.place}); added++;
+      });
+      persist(); renderAll(); toast(added+'건을 불러왔어요.');
+    }catch(e){toast('백업 파일을 읽지 못했어요.');}
+  };
+  rd.readAsText(f); this.value='';
+});
+
+/* ---------- 음성 입력 ---------- */
+function setMic(listening){
+  var b=$('#mic'); b.classList.toggle('listening',listening);
+  $('#mic-label').textContent=listening?'듣는 중 (누르면 멈춤)':'말하기';
+}
+function scheduleAuto(){
+  clearTimeout(autoTimer);
+  autoTimer=setTimeout(function(){
+    var p=parseEntry(finalText);
+    if(p.place){
+      if(dict&&dict.active()) dict.stop();
+      commit(p);
+    }else if(p.error){
+      toast('다시 말씀해 주세요. '+p.error);
+    }
+  },1300);
+}
+function initDictation(){
+  var tries=0;
+  try{
+    if(!(window.claude&&window.claude.use)) return;
+    window.claude.use('downloads').then(function(d){dl=d||null;},function(){});
+    window.claude.use('dictation').then(function(d){
+      if(!d) return;
+      dict=d;
+      $('#mic-tip').textContent='말하기를 누르고 「금곡역 4만 1230」처럼 말하면 잠시 뒤 저장돼요. 잘못 저장되면 되돌리기를 누르세요.';
+      d.onState(function(e){setMic(e.state==='listening'||e.state==='starting');});
+      d.onPartial(function(e){ $('#entry').value=(finalText+' '+e.text).trim(); updatePreview(); });
+      d.onFinal(function(e){ finalText=(finalText+e.text).trim(); $('#entry').value=finalText; updatePreview(); scheduleAuto(); });
+    },function(){});
+  }catch(e){}
+}
+
+var SR=window.SpeechRecognition||window.webkitSpeechRecognition, rec=null;
+var lastErr='';
+function keyboardMicHint(msg){
+  var full=msg+' 입력칸을 누르고 키보드의 마이크를 쓰세요.'+(lastErr?' ('+lastErr+')':'');
+  $('#mic-tip').textContent=full; $('#mic-tip').style.color='var(--warn)';
+  toast(full);
+  $('#entry').focus();
+}
+function startBrowserSpeech(){
+  var gotError=false;
+  try{
+    rec=new SR(); rec.lang='ko-KR'; rec.interimResults=true; rec.continuous=false;
+    rec.onstart=function(){setMic(true);};
+    rec.onresult=function(e){
+      var fin='', part='', i;
+      for(i=e.resultIndex;i<e.results.length;i++){
+        if(e.results[i].isFinal) fin+=e.results[i][0].transcript; else part+=e.results[i][0].transcript;
+      }
+      if(fin){finalText=(finalText+' '+fin).trim(); $('#entry').value=finalText; updatePreview(); scheduleAuto();}
+      else{$('#entry').value=(finalText+' '+part).trim(); updatePreview();}
+    };
+    rec.onerror=function(e){gotError=true; lastErr=e.error; setMic(false); keyboardMicHint(e.error==='not-allowed'||e.error==='service-not-allowed'?'이 화면에서는 마이크를 쓸 수 없어요.':'음성 인식이 안 됐어요.');};
+    rec.onend=function(){setMic(false);};
+    rec.start();
+  }catch(e){setMic(false); keyboardMicHint('이 화면에서는 음성 인식을 쓸 수 없어요.');}
+}
+$('#mic').addEventListener('click',function(){
+  if(dict){
+    if(dict.active()){clearTimeout(autoTimer);dict.stop();return;}
+    finalText=''; $('#entry').value=''; updatePreview();
+    dict.start().catch(function(err){
+      if(err&&err.code==='stopped') return;
+      keyboardMicHint(err&&err.code==='not_granted'?'마이크 사용이 허용되지 않았어요.':'음성 입력을 시작하지 못했어요.');
+    });
+    return;
+  }
+  if(SR){
+    if(rec&&$('#mic').classList.contains('listening')){clearTimeout(autoTimer);try{rec.stop();}catch(e){}return;}
+    finalText=''; $('#entry').value=''; updatePreview(); startBrowserSpeech();
+    return;
+  }
+  keyboardMicHint('이 화면에는 음성 인식이 없어요.');
+});
+
+/* ---------- 시작 ---------- */
+records=load();
+renderAll();
+initDictation();
+try{if('serviceWorker' in navigator&&/^https?:$/.test(location.protocol)) navigator.serviceWorker.register('sw.js').catch(function(){});}catch(e){}
+if(SR){$('#mic-tip').textContent='말하기를 누르고 「금곡역 4만 1230」처럼 말하면 잠시 뒤 저장돼요. 잘못 저장되면 되돌리기를 누르세요.';}
+document.addEventListener('visibilitychange',function(){if(!document.hidden) renderToday();});
+})();
+</script>
+
+</body>
+</html>
