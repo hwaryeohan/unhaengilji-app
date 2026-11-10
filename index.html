@@ -124,7 +124,8 @@ h1{margin:0;font-size:22px;font-weight:700;letter-spacing:-.01em}
 #choice{position:fixed;inset:0;background:var(--scrim);display:flex;align-items:flex-end;justify-content:center;z-index:25}
 #choice p{margin:0;font-size:16px}
 #choice .btn{flex:none}
-#sheet{position:fixed;inset:0;background:var(--scrim);display:flex;align-items:flex-end;justify-content:center;z-index:20}
+#sheet{position:fixed;inset:0;background:var(--scrim);display:flex;align-items:flex-start;justify-content:center;z-index:20}
+#sheet .panel{border-radius:0 0 18px 18px;max-height:100%;overflow-y:auto;padding-top:calc(18px + env(safe-area-inset-top,0px));padding-bottom:18px}
 #sheet[hidden]{display:none}
 .panel{background:var(--surface);width:100%;max-width:560px;border-radius:18px 18px 0 0;padding:18px 16px;padding-bottom:calc(18px + env(safe-area-inset-bottom,0px));padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:12px}
 .panel h2{margin:0;font-size:18px}
@@ -176,7 +177,7 @@ body{margin:0}
         <button type="submit" class="btn primary" id="save-btn" disabled>기록</button>
       </div>
       <div class="chips" id="chips" aria-label="최근 장소"></div>
-      <div class="waitrow"><label for="wait-sel">말을 멈추고 저장하기까지 기다리는 시간 </label>
+      <div class="waitrow"><label for="wait-sel">말을 멈추고 저장하기까지 기다리는 시간</label>
         <select id="wait-sel" aria-label="저장 대기 시간"><option value="1.5">1.5초</option><option value="3">3초</option><option value="5">5초</option><option value="8">8초</option><option value="12">12초</option></select></div>
       <div class="tip" id="mic-tip">입력칸을 누르고 키보드의 마이크 버튼으로 말해도 돼요. 말한 뒤 「기록」을 누르세요.</div>
     </form>
