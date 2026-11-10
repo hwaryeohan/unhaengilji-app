@@ -75,6 +75,8 @@ h1{margin:0;font-size:22px;font-weight:700;letter-spacing:-.01em}
 .btn.mic-big{flex:0 0 46%;min-height:68px;font-size:19px;background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
 .btn.mic-big.listening{color:#fff}
 #save-btn{min-height:68px;font-size:19px}
+.field select{padding:10px 12px;font-size:16px;border:2px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink)}
+.waitrow{display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:14px;color:var(--muted)}
 .btn:disabled{opacity:.45;cursor:default}
 .btn.small{flex:none;min-height:42px;font-weight:500;font-size:15px}
 .preview{min-height:24px;font-size:15px;color:var(--muted)}
@@ -174,6 +176,8 @@ body{margin:0}
         <button type="submit" class="btn primary" id="save-btn" disabled>기록</button>
       </div>
       <div class="chips" id="chips" aria-label="최근 장소"></div>
+      <div class="waitrow"><label for="wait-sel">말을 멈추고 저장하기까지 기다리는 시간</label>
+        <select id="wait-sel" aria-label="저장 대기 시간"><option value="1.5">1.5초</option><option value="3">3초</option><option value="5">5초</option><option value="8">8초</option><option value="12">12초</option></select></div>
       <div class="tip" id="mic-tip">입력칸을 누르고 키보드의 마이크 버튼으로 말해도 돼요. 말한 뒤 「기록」을 누르세요.</div>
     </form>
 
@@ -599,17 +603,22 @@ function setMic(listening){
   var b=$('#mic'); b.classList.toggle('listening',listening);
   $('#mic-label').textContent=listening?'듣는 중 (누르면 멈춤)':'말하기';
 }
+var waitSec=3;
+try{var ws=parseFloat(localStorage.getItem('unhaengilji.wait')); if(ws>0) waitSec=ws;}catch(e){}
+(function(){var sel=$('#wait-sel'); sel.value=String(waitSec); if(sel.value!==String(waitSec)){sel.value='3';waitSec=3;}
+  sel.addEventListener('change',function(){waitSec=parseFloat(sel.value)||3;try{localStorage.setItem('unhaengilji.wait',String(waitSec));}catch(e){}toast('말을 멈추고 '+waitSec+'초 뒤에 저장해요.');});})();
 function scheduleAuto(){
   clearTimeout(autoTimer);
   autoTimer=setTimeout(function(){
     var p=parseEntry(finalText);
     if(p.place){
       if(dict&&dict.active()) dict.stop();
+      stopListen();
       commit(p);
     }else if(p.error){
       toast('다시 말씀해 주세요. '+p.error);
     }
-  },1300);
+  },waitSec*1000);
 }
 function initDictation(){
   var tries=0;
@@ -635,12 +644,23 @@ function keyboardMicHint(msg){
   toast(full);
   $('#entry').focus();
 }
+var wantListen=false, listenTimer=null;
+function stopListen(){
+  wantListen=false; clearTimeout(listenTimer);
+  try{if(rec) rec.stop();}catch(e){}
+  setMic(false);
+}
 function startBrowserSpeech(){
-  var gotError=false;
+  wantListen=true; clearTimeout(listenTimer);
+  listenTimer=setTimeout(function(){if(wantListen){stopListen();toast('시간이 지나 듣기를 멈췄어요.');}},60000);
+  beginRec();
+}
+function beginRec(){
   try{
     rec=new SR(); rec.lang='ko-KR'; rec.interimResults=true; rec.continuous=false;
     rec.onstart=function(){setMic(true);};
     rec.onresult=function(e){
+      clearTimeout(autoTimer);
       var fin='', part='', i;
       for(i=e.resultIndex;i<e.results.length;i++){
         if(e.results[i].isFinal) fin+=e.results[i][0].transcript; else part+=e.results[i][0].transcript;
@@ -648,10 +668,17 @@ function startBrowserSpeech(){
       if(fin){finalText=(finalText+' '+fin).trim(); $('#entry').value=finalText; updatePreview(); scheduleAuto();}
       else{$('#entry').value=(finalText+' '+part).trim(); updatePreview();}
     };
-    rec.onerror=function(e){gotError=true; lastErr=e.error; setMic(false); keyboardMicHint(e.error==='not-allowed'||e.error==='service-not-allowed'?'이 화면에서는 마이크를 쓸 수 없어요.':'음성 인식이 안 됐어요.');};
-    rec.onend=function(){setMic(false);};
+    rec.onerror=function(e){
+      if(e.error==='no-speech'||e.error==='aborted') return;
+      lastErr=e.error; wantListen=false; setMic(false);
+      keyboardMicHint(e.error==='not-allowed'||e.error==='service-not-allowed'?'이 화면에서는 마이크를 쓸 수 없어요.':'음성 인식이 안 됐어요.');
+    };
+    rec.onend=function(){
+      if(wantListen){setTimeout(function(){if(wantListen) beginRec();},150);}
+      else setMic(false);
+    };
     rec.start();
-  }catch(e){setMic(false); keyboardMicHint('이 화면에서는 음성 인식을 쓸 수 없어요.');}
+  }catch(e){wantListen=false; setMic(false); keyboardMicHint('이 화면에서는 음성 인식을 쓸 수 없어요.');}
 }
 $('#mic').addEventListener('click',function(){
   if(dict){
@@ -664,7 +691,7 @@ $('#mic').addEventListener('click',function(){
     return;
   }
   if(SR){
-    if(rec&&$('#mic').classList.contains('listening')){clearTimeout(autoTimer);try{rec.stop();}catch(e){}return;}
+    if(wantListen){clearTimeout(autoTimer);stopListen();return;}
     finalText=''; $('#entry').value=''; updatePreview(); startBrowserSpeech();
     return;
   }
