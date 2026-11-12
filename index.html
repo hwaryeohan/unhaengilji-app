@@ -113,6 +113,12 @@ h1{margin:0;font-size:22px;font-weight:700;letter-spacing:-.01em}
 .dayrow .dd{display:flex;flex-direction:column;line-height:1.25}
 .dayrow .dd b{font-family:var(--mono);font-size:18px;font-weight:600}
 .dayrow .dd small{font-family:var(--sans);color:var(--muted);font-weight:400;font-size:12px}
+.addday{background:var(--surface);border:1px solid var(--line);border-radius:14px}
+.addday summary{padding:14px;font-weight:700;cursor:pointer;list-style:none}
+.addday summary::-webkit-details-marker{display:none}
+.addday[open] summary{border-bottom:1px solid var(--line)}
+.addday form{display:flex;flex-direction:column;gap:10px;padding:12px 14px 14px}
+.addday input{padding:12px;font-size:17px;border:2px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);width:100%;min-width:0}
 .days{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:12px}
 .days>li{background:var(--surface);border:1px solid var(--line);border-radius:14px;overflow:hidden}
 .days>li.open{border-color:var(--accent);border-width:2px}
@@ -174,7 +180,7 @@ body{margin:0}
 
 <div class="wrap" id="app">
   <header>
-    <h1>운행일지<small class="ver" id="ver">v13</small></h1>
+    <h1>운행일지<small class="ver" id="ver">v14</small></h1>
     <span class="date" id="today-label"></span>
   </header>
 
@@ -223,6 +229,15 @@ body{margin:0}
       <div class="tile"><span class="eyebrow">이달 주행</span><span class="big"><span class="n" id="m-km">0</span><span class="u">km</span></span></div>
       <div class="tile"><span class="eyebrow">운행한 날</span><span class="big"><span class="n" id="m-days">0</span><span class="u">일</span></span></div>
     </div>
+    <details class="addday" id="addday">
+      <summary>+ 날짜 추가</summary>
+      <form id="addday-form" autocomplete="off">
+        <label class="field" for="ad-date">날짜<input type="date" id="ad-date"></label>
+        <label class="field" for="ad-in">출발 장소와 계기판 숫자 (시간은 8시 30분처럼 덧붙여도 돼요)<input type="text" id="ad-in" placeholder="예: 회사 233500" enterkeyhint="done" autocomplete="off" spellcheck="false" list="places"></label>
+        <div class="preview" id="ad-pv" aria-live="polite"></div>
+        <button type="submit" class="btn primary">날짜 추가</button>
+      </form>
+    </details>
     <div id="log-list"></div>
 
     <div class="tools">
@@ -545,8 +560,8 @@ function setTab(t){
 }
 $('#tab-today').onclick=function(){setTab('today');};
 $('#tab-log').onclick=function(){setTab('log');};
-$('#m-prev').onclick=function(){monthRef=new Date(monthRef.getFullYear(),monthRef.getMonth()-1,1);openDay=null;renderLog();};
-$('#m-next').onclick=function(){monthRef=new Date(monthRef.getFullYear(),monthRef.getMonth()+1,1);openDay=null;renderLog();};
+$('#m-prev').onclick=function(){monthRef=new Date(monthRef.getFullYear(),monthRef.getMonth()-1,1);openDay=null;renderLog();if($('#addday').open) syncAddDate();};
+$('#m-next').onclick=function(){monthRef=new Date(monthRef.getFullYear(),monthRef.getMonth()+1,1);openDay=null;renderLog();if($('#addday').open) syncAddDate();};
 $('#log-list').addEventListener('click',function(e){
   var r=e.target.closest('.row');
   if(r){openEdit(r.getAttribute('data-id'));return;}
@@ -792,6 +807,38 @@ $('#log-list').addEventListener('submit',function(e){
   var rec={id:newId(),ts:viaTs(key,p),place:p.place,odo:p.odo};
   records.push(rec); persist(); renderAll();
   toast((note?note+' ':'경유지를 추가했어요 \u00b7 ')+p.place+' '+fmt(p.odo)+' km','되돌리기',function(){
+    records=records.filter(function(r){return r.id!==rec.id;}); persist(); renderAll();
+  });
+});
+
+function syncAddDate(){
+  var inp=$('#ad-date'), now=new Date(), first=new Date(monthRef.getFullYear(),monthRef.getMonth(),1);
+  var sameMonth=now.getFullYear()===monthRef.getFullYear()&&now.getMonth()===monthRef.getMonth();
+  var d=sameMonth?now:first;
+  inp.max=now.getFullYear()+'-'+pad(now.getMonth()+1)+'-'+pad(now.getDate());
+  if(!inp.value||inp.value.indexOf(monthKeyPrefix())!==0) inp.value=d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
+}
+$('#addday').addEventListener('toggle',function(){if(this.open) syncAddDate();});
+$('#ad-in').addEventListener('input',function(){
+  var pv=$('#ad-pv'), p=parseEntry(this.value);
+  if(p.empty){pv.className='preview';pv.textContent='';return;}
+  if(p.error){pv.className='preview err';pv.textContent=p.error;return;}
+  pv.className='preview ok';
+  pv.innerHTML='장소 <b>'+esc(p.place)+'</b> · 계기판 <b>'+fmt(p.odo)+'</b> km'+(p.time?' · 시간 <b>'+pad(p.time.h)+':'+pad(p.time.m)+'</b>':' · 시간 <b>09:00</b> (정하지 않으면)');
+});
+$('#addday-form').addEventListener('submit',function(e){
+  e.preventDefault();
+  var pv=$('#ad-pv'), v=$('#ad-date').value, p=parseEntry($('#ad-in').value);
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(v)){pv.className='preview err';pv.textContent='날짜를 골라 주세요.';return;}
+  if(!p.place){pv.className='preview err';pv.textContent=p.error||'장소와 계기판 숫자를 입력해 주세요. 예: 회사 233500';return;}
+  var q=v.split('-'), existed=!!(groupDays(records)[v]);
+  var ts=new Date(+q[0],+q[1]-1,+q[2],p.time?p.time.h:9,p.time?p.time.m:0,0,0).getTime();
+  var rec={id:newId(),ts:ts,place:p.place,odo:p.odo};
+  records.push(rec); persist();
+  monthRef=new Date(+q[0],+q[1]-1,1); openDay=v;
+  $('#ad-in').value=''; pv.textContent=''; pv.className='preview'; $('#addday').open=false;
+  renderAll();
+  toast((existed?'이미 기록이 있는 날이라 계기판 순서로 넣었어요 \u00b7 ':'날짜를 추가했어요. 펼친 곳에서 경유지와 도착을 더하세요 \u00b7 ')+p.place+' '+fmt(p.odo)+' km','되돌리기',function(){
     records=records.filter(function(r){return r.id!==rec.id;}); persist(); renderAll();
   });
 });
