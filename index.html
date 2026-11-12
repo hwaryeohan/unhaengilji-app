@@ -110,19 +110,33 @@ h1{margin:0;font-size:22px;font-weight:700;letter-spacing:-.01em}
 .monthbar h2{margin:0;font-size:18px}
 .stats{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .dayrow{width:100%;text-align:left;background:transparent;border:0;display:grid;grid-template-columns:64px minmax(0,1fr) auto;gap:10px;padding:14px;align-items:center}
-.dayrow .dd{font-family:var(--mono);font-weight:600}
-.dayrow .dd small{font-family:var(--sans);color:var(--muted);font-weight:400}
+.dayrow .dd{display:flex;flex-direction:column;line-height:1.25}
+.dayrow .dd b{font-family:var(--mono);font-size:18px;font-weight:600}
+.dayrow .dd small{font-family:var(--sans);color:var(--muted);font-weight:400;font-size:12px}
+.days{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:12px}
+.days>li{background:var(--surface);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.days>li.open{border-color:var(--accent);border-width:2px}
+.days>li.open .dayrow{background:var(--accent-soft)}
+.cols{display:grid;grid-template-columns:54px minmax(0,1fr) auto;gap:10px;padding:10px 14px 0;font-size:12px;color:var(--muted)}
+.cols span:last-child{text-align:right}
 .dayrow .rt{overflow-wrap:anywhere;font-size:15px}
 .dayrow .rt small{display:block;color:var(--muted);font-size:13px}
 .dayrow .km{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:19px;font-weight:600}
-.detail{border-top:1px solid var(--line);background:var(--bg)}
+.detail{border-top:1px solid var(--line);background:var(--surface)}
+.detail .list{border:0;border-radius:0;background:transparent}
 .detail .row{padding-left:14px}
 
 .memo{display:flex;flex-direction:column;gap:6px}
-.memo-t{width:100%;min-height:76px;padding:10px 12px;font:16px/1.5 var(--sans);border:2px solid var(--line);border-radius:12px;background:var(--surface);color:var(--ink);resize:vertical}
+.memo{min-width:0}
+.wrap>*{min-width:0}
+#view-today,#view-log{width:100%;margin:0}
+.days,.days>li,.detail{min-width:0;max-width:100%}
+.memo-t{width:100%;min-width:0;max-width:100%;min-height:76px;padding:10px 12px;font:16px/1.5 var(--sans);border:2px solid var(--line);border-radius:12px;background:var(--surface);color:var(--ink);resize:vertical}
 .memo-t:focus{border-color:var(--accent);outline:none}
-.detail .memo{padding:12px 14px}
-.viaform{display:flex;flex-direction:column;gap:6px;padding:12px 14px;border-top:1px solid var(--line)}
+.detail .memo{padding:6px 14px 14px}
+.viaform{display:flex;flex-direction:column;gap:6px;padding:10px 14px 4px;border-top:1px solid var(--line)}
+.viaform .via-pv{min-height:0}
+.viaform .via-pv:empty{display:none}
 .viaform input{flex:1;min-width:0;padding:12px;font-size:17px;border:2px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink)}
 .viaform input:focus{border-color:var(--accent);outline:none}
 .viaform .btn{flex:0 0 auto;min-width:76px}
@@ -160,7 +174,7 @@ body{margin:0}
 
 <div class="wrap" id="app">
   <header>
-    <h1>운행일지<small class="ver" id="ver">v12</small></h1>
+    <h1>운행일지<small class="ver" id="ver">v13</small></h1>
     <span class="date" id="today-label"></span>
   </header>
 
@@ -426,17 +440,17 @@ function renderLog(){
   $('#m-days').textContent=days.length;
   var host=$('#log-list');
   if(!days.length){host.innerHTML='<div class="empty"><span>이 달에는 기록이 없어요.</span></div>';return;}
-  host.innerHTML='<ul class="list">'+days.slice().reverse().map(function(d){
+  host.innerHTML='<ul class="days">'+days.slice().reverse().map(function(d){
     var st=d.st, open=openDay===d.key, p=d.key.split('-');
     var route=routeText(d.arr);
     var mm=(memos[d.key]||'').trim().split(/\n/)[0]; if(mm.length>28) mm=mm.slice(0,28)+'\u2026';
     var sub=st.two?(st.vias.length?'경유 '+st.vias.length+'곳':'경유 없음'):'도착 기록 없음';
     if(Object.keys(mismatchSet(d.arr)).length) sub+=' · 시간 확인';
-    return '<li><button type="button" class="dayrow" data-day="'+d.key+'" aria-expanded="'+open+'">'+
-      '<span class="dd">'+p[1]+'/'+p[2]+' <small>'+wd(d.key)+'</small></span>'+
+    return '<li class="'+(open?'open':'')+'"><button type="button" class="dayrow" data-day="'+d.key+'" aria-expanded="'+open+'">'+
+      '<span class="dd"><b>'+p[1]+'/'+p[2]+'</b><small>'+wd(d.key)+'요일</small></span>'+
       '<span class="rt">'+route+'<small>'+sub+'</small>'+(mm?'<small class="mm">\uba54\ubaa8 '+esc(mm)+'</small>':'')+'</span>'+
       '<span class="km">'+(st.two?fmt(st.total):'-')+'</span></button>'+
-      (open?'<div class="detail">'+entriesHtml(d.arr)+viaFormHtml(d.key)+memoHtml(d.key)+'</div>':'')+'</li>';
+      (open?'<div class="detail"><div class="cols"><span>시각</span><span>장소</span><span>계기판(km)</span></div>'+entriesHtml(d.arr)+viaFormHtml(d.key)+memoHtml(d.key)+'</div>':'')+'</li>';
   }).join('')+'</ul>';
 }
 
