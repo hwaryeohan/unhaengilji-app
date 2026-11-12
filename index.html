@@ -190,7 +190,7 @@ body{margin:0}
 
     <div id="today-list"></div>
 
-    <label class="memo"><span class="eyebrow">오늘 메모</span><textarea id="memo-today" class="memo-t" rows="3" placeholder="예: DMI"></textarea></label>
+    <label class="memo"><span class="eyebrow">오늘 메모</span><textarea id="memo-today" class="memo-t" rows="3" placeholder="예: DMI 베어링 교환, 다음 방문일정 목요일"></textarea></label>
   </section>
 
   <!-- 월별 기록 -->
@@ -309,7 +309,7 @@ function routeText(arr){
   return out.map(esc).join(' \u2192 ');
 }
 function memoHtml(key){
-  return '<label class="memo"><span class="eyebrow">\uba54\ubaa8</span><textarea class="memo-t" data-memo="'+key+'" rows="3" placeholder="예: DMI">'+esc(memos[key]||'')+'</textarea></label>';
+  return '<label class="memo"><span class="eyebrow">\uba54\ubaa8</span><textarea class="memo-t" data-memo="'+key+'" rows="3" placeholder="예: DMI 베어링 교환, 다음 방문일정 목요일">'+esc(memos[key]||'')+'</textarea></label>';
 }
 var tab='today', monthRef=new Date(), openDay=null, editId=null, delArmed=false;
 var dict=null, dl=null, finalText='', autoTimer=null, toastTimer=null;
