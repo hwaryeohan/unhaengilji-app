@@ -625,7 +625,7 @@ $('#b-file').addEventListener('change',function(){
 /* ---------- 음성 입력 ---------- */
 function setMic(listening){
   var b=$('#mic'); b.classList.toggle('listening',listening);
-  $('#mic-label').textContent=listening?'듣는 중 (누르면 멈춤)':'말하기';
+  $('#mic-label').textContent=listening?'말하세요 · 누르면 멈춤':'말하기';
 }
 var waitSec=3;
 try{var ws=parseFloat(localStorage.getItem('unhaengilji.wait')); if(ws>0) waitSec=ws;}catch(e){}
@@ -652,7 +652,7 @@ function initDictation(){
     window.claude.use('dictation').then(function(d){
       if(!d) return;
       dict=d;
-      $('#mic-tip').textContent='말하기를 누르고 「금곡역 4만 1230」처럼 말하면 잠시 뒤 저장돼요. 잘못 저장되면 되돌리기를 누르세요.';
+      $('#mic-tip').textContent='말하기를 누르고 띵 소리가 난 뒤에 「금곡역 4만 1230」처럼 한 번에 말하세요. 숫자가 빠지면 한 번 더 띵 소리가 나고 숫자만 말하면 돼요.';
       d.onState(function(e){setMic(e.state==='listening'||e.state==='starting');});
       d.onPartial(function(e){ $('#entry').value=(finalText+' '+e.text).trim(); updatePreview(); });
       d.onFinal(function(e){ finalText=(finalText+e.text).trim(); $('#entry').value=finalText; updatePreview(); scheduleAuto(); });
@@ -683,7 +683,7 @@ function beginRec(){
   try{
     var base=finalText;
     rec=new SR(); rec.lang='ko-KR'; rec.interimResults=true; rec.continuous=true;
-    rec.onstart=function(){setMic(true);};
+    rec.onstart=function(){setMic(true); if(restarts>0) $('#mic-label').textContent='이제 숫자를 말하세요';};
     rec.onresult=function(e){
       clearTimeout(autoTimer);
       var acc='', allFinal=true, i, t;
@@ -702,9 +702,15 @@ function beginRec(){
       keyboardMicHint(e.error==='not-allowed'||e.error==='service-not-allowed'?'이 화면에서는 마이크를 쓸 수 없어요.':'음성 인식이 안 됐어요.');
     };
     rec.onend=function(){
-      var was=wantListen; wantListen=false; setMic(false);
-      var p=parseEntry($('#entry').value);
-      if(was&&!p.place&&$('#entry').value.trim()) toast('숫자까지 이어서 말하려면 말하기를 다시 누르세요.');
+      var was=wantListen, cur=$('#entry').value.trim(), p=parseEntry(cur);
+      if(was&&cur&&!p.place&&restarts<2){
+        restarts++; finalText=cur;
+        $('#mic-label').textContent='띵 소리 뒤에 숫자를 말하세요';
+        setTimeout(function(){if(wantListen) beginRec();},100);
+        return;
+      }
+      wantListen=false; setMic(false);
+      if(was&&cur&&!p.place) toast('숫자가 안 들어왔어요. 말하기를 다시 누르고 숫자만 말해도 돼요.');
     };
     rec.start();
   }catch(e){wantListen=false; setMic(false); keyboardMicHint('이 화면에서는 음성 인식을 쓸 수 없어요.');}
@@ -721,7 +727,7 @@ $('#mic').addEventListener('click',function(){
   }
   if(SR){
     if(wantListen){clearTimeout(autoTimer);stopListen();return;}
-    finalText=$('#entry').value.trim(); startBrowserSpeech();
+    finalText=$('#entry').value.trim(); $('#mic-label').textContent='띵 소리 뒤에 말하세요'; startBrowserSpeech();
     return;
   }
   keyboardMicHint('이 화면에는 음성 인식이 없어요.');
@@ -736,7 +742,7 @@ memos=loadMemos();
 renderAll();
 initDictation();
 try{if('serviceWorker' in navigator&&/^https?:$/.test(location.protocol)) navigator.serviceWorker.register('sw.js').catch(function(){});}catch(e){}
-if(SR){$('#mic-tip').textContent='말하기를 누르고 「금곡역 4만 1230」처럼 말하면 잠시 뒤 저장돼요. 잘못 저장되면 되돌리기를 누르세요.';}
+if(SR){$('#mic-tip').textContent='말하기를 누르고 띵 소리가 난 뒤에 「금곡역 4만 1230」처럼 한 번에 말하세요. 숫자가 빠지면 한 번 더 띵 소리가 나고 숫자만 말하면 돼요.';}
 document.addEventListener('visibilitychange',function(){if(!document.hidden) renderToday();});
 })();
 </script>
