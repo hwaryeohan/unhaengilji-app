@@ -727,7 +727,7 @@ $('#mic').addEventListener('click',function(){
   }
   if(SR){
     if(wantListen){clearTimeout(autoTimer);stopListen();return;}
-    finalText=$('#entry').value.trim(); $('#mic-label').textContent='띵 소리 뒤에 말하세요'; startBrowserSpeech();
+    finalText=''; $('#entry').value=''; updatePreview(); $('#mic-label').textContent='띵 소리 뒤에 말하세요'; startBrowserSpeech();
     return;
   }
   keyboardMicHint('이 화면에는 음성 인식이 없어요.');
