@@ -681,16 +681,20 @@ function startBrowserSpeech(){
 }
 function beginRec(){
   try{
-    rec=new SR(); rec.lang='ko-KR'; rec.interimResults=true; rec.continuous=false;
+    var base=finalText;
+    rec=new SR(); rec.lang='ko-KR'; rec.interimResults=true; rec.continuous=true;
     rec.onstart=function(){setMic(true);};
     rec.onresult=function(e){
       clearTimeout(autoTimer);
-      var fin='', part='', i;
-      for(i=e.resultIndex;i<e.results.length;i++){
-        if(e.results[i].isFinal) fin+=e.results[i][0].transcript; else part+=e.results[i][0].transcript;
+      var acc='', allFinal=true, i, t;
+      for(i=0;i<e.results.length;i++){
+        t=String(e.results[i][0].transcript||'').trim();
+        if(!e.results[i].isFinal) allFinal=false;
+        if(acc && t.indexOf(acc)===0) acc=t; else acc=(acc+' '+t).trim();
       }
-      if(fin){finalText=(finalText+' '+fin).trim(); $('#entry').value=finalText; updatePreview(); scheduleAuto();}
-      else{$('#entry').value=(finalText+' '+part).trim(); updatePreview();}
+      var text=(base+' '+acc).trim();
+      $('#entry').value=text; updatePreview();
+      if(allFinal){finalText=text; scheduleAuto();}
     };
     rec.onerror=function(e){
       if(e.error==='no-speech'||e.error==='aborted') return;
@@ -698,10 +702,9 @@ function beginRec(){
       keyboardMicHint(e.error==='not-allowed'||e.error==='service-not-allowed'?'이 화면에서는 마이크를 쓸 수 없어요.':'음성 인식이 안 됐어요.');
     };
     rec.onend=function(){
-      if(!wantListen){setMic(false);return;}
-      if(parseEntry(finalText).place){wantListen=false;setMic(false);return;}
-      if(restarts<3){restarts++;setTimeout(function(){if(wantListen) beginRec();},150);}
-      else{wantListen=false;setMic(false);}
+      var was=wantListen; wantListen=false; setMic(false);
+      var p=parseEntry($('#entry').value);
+      if(was&&!p.place&&$('#entry').value.trim()) toast('숫자까지 이어서 말하려면 말하기를 다시 누르세요.');
     };
     rec.start();
   }catch(e){wantListen=false; setMic(false); keyboardMicHint('이 화면에서는 음성 인식을 쓸 수 없어요.');}
@@ -718,7 +721,7 @@ $('#mic').addEventListener('click',function(){
   }
   if(SR){
     if(wantListen){clearTimeout(autoTimer);stopListen();return;}
-    finalText=''; $('#entry').value=''; updatePreview(); startBrowserSpeech();
+    finalText=$('#entry').value.trim(); startBrowserSpeech();
     return;
   }
   keyboardMicHint('이 화면에는 음성 인식이 없어요.');
