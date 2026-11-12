@@ -117,6 +117,11 @@ h1{margin:0;font-size:22px;font-weight:700;letter-spacing:-.01em}
 .detail{border-top:1px solid var(--line);background:var(--bg)}
 .detail .row{padding-left:14px}
 
+.memo{display:flex;flex-direction:column;gap:6px}
+.memo-t{width:100%;min-height:76px;padding:10px 12px;font:16px/1.5 var(--sans);border:2px solid var(--line);border-radius:12px;background:var(--surface);color:var(--ink);resize:vertical}
+.memo-t:focus{border-color:var(--accent);outline:none}
+.detail .memo{padding:12px 14px}
+.dayrow .rt small.mm{color:var(--ink)}
 .tools{display:flex;flex-direction:column;gap:10px}
 .tools h3{margin:0;font-size:15px}
 .tools .btnrow{flex-wrap:wrap}
@@ -184,6 +189,8 @@ body{margin:0}
     </form>
 
     <div id="today-list"></div>
+
+    <label class="memo"><span class="eyebrow">오늘 메모</span><textarea id="memo-today" class="memo-t" rows="3" placeholder="예: 신환징기 베어링 교체, 다음 방문 목요일"></textarea></label>
   </section>
 
   <!-- 월별 기록 -->
@@ -292,7 +299,18 @@ function parseEntry(raw){
 (function(){
 'use strict';
 var KEY='unhaengilji.v1';
-var records=[], memOnly=false;
+var records=[], memOnly=false, memos={};
+var MEMO_KEY='unhaengilji.memo.v1';
+function loadMemos(){try{var m=JSON.parse(localStorage.getItem(MEMO_KEY)||'{}');return m&&typeof m==='object'&&!Array.isArray(m)?m:{};}catch(e){return {};}}
+function saveMemos(){try{localStorage.setItem(MEMO_KEY,JSON.stringify(memos));}catch(e){}}
+function setMemo(key,v){if(String(v).trim()) memos[key]=v; else delete memos[key]; saveMemos();}
+function routeText(arr){
+  var out=[]; arr.forEach(function(r){if(!out.length||out[out.length-1]!==r.place) out.push(r.place);});
+  return out.map(esc).join(' \u2192 ');
+}
+function memoHtml(key){
+  return '<label class="memo"><span class="eyebrow">\uba54\ubaa8</span><textarea class="memo-t" data-memo="'+key+'" rows="3" placeholder="\uc608: \uc2e0\ud658\uc9d5\uae30 \ubca0\uc5b4\ub9c1 \uad50\uccb4, \ub2e4\uc74c \ubc29\ubb38 \ubaa9\uc694\uc77c">'+esc(memos[key]||'')+'</textarea></label>';
+}
 var tab='today', monthRef=new Date(), openDay=null, editId=null, delArmed=false;
 var dict=null, dl=null, finalText='', autoTimer=null, toastTimer=null;
 
@@ -353,6 +371,7 @@ function entriesHtml(arr){
 function renderToday(){
   var now=new Date(), key=dkey(now.getTime());
   $('#today-label').textContent=(now.getMonth()+1)+'월 '+now.getDate()+'일 '+wd(key)+'요일';
+  var mt=$('#memo-today'); if(document.activeElement!==mt) mt.value=memos[key]||'';
   var arr=groupDays(records)[key]||[];
   var tile=$('#today-tile'), list=$('#today-list');
   if(!arr.length){
@@ -363,7 +382,7 @@ function renderToday(){
   var s=stats(arr);
   tile.innerHTML='<span class="eyebrow">오늘 운행</span>'+
     '<span class="big"><span class="n">'+(s.two?fmt(s.total):'0')+'</span><span class="u">km</span></span>'+
-    '<span class="route">'+esc(s.first.place)+(s.two?' → '+esc(s.last.place):'')+' <span class="t mono">· '+hhmm(s.first.ts)+(s.two?'–'+hhmm(s.last.ts):'')+'</span></span>'+
+    '<span class="route">'+routeText(arr)+' <span class="t mono">· '+hhmm(s.first.ts)+(s.two?'–'+hhmm(s.last.ts):'')+'</span></span>'+
     (s.two?'<span class="hint">경유 '+s.vias.length+'곳 · 계기판 '+fmt(s.first.odo)+' → '+fmt(s.last.odo)+'</span>':'<span class="hint">다음 기록부터 거리가 계산돼요.</span>');
   var nBad=Object.keys(mismatchSet(arr)).length;
   list.innerHTML=(nBad?'<div class="warnbox" style="margin-bottom:12px">시간 순서와 계기판 순서가 달라요. 계기판 순서를 기준으로 정리했어요. 「시간 확인」이 붙은 기록의 시간이나 숫자를 확인하세요.</div>':'')+entriesHtml(arr);
@@ -385,14 +404,15 @@ function renderLog(){
   if(!days.length){host.innerHTML='<div class="empty"><span>이 달에는 기록이 없어요.</span></div>';return;}
   host.innerHTML='<ul class="list">'+days.slice().reverse().map(function(d){
     var st=d.st, open=openDay===d.key, p=d.key.split('-');
-    var route=esc(st.first.place)+(st.two?' → '+esc(st.last.place):'');
+    var route=routeText(d.arr);
+    var mm=(memos[d.key]||'').trim().split(/\n/)[0]; if(mm.length>28) mm=mm.slice(0,28)+'\u2026';
     var sub=st.two?(st.vias.length?'경유 '+st.vias.length+'곳':'경유 없음'):'도착 기록 없음';
     if(Object.keys(mismatchSet(d.arr)).length) sub+=' · 시간 확인';
     return '<li><button type="button" class="dayrow" data-day="'+d.key+'" aria-expanded="'+open+'">'+
       '<span class="dd">'+p[1]+'/'+p[2]+' <small>'+wd(d.key)+'</small></span>'+
-      '<span class="rt">'+route+'<small>'+sub+'</small></span>'+
+      '<span class="rt">'+route+'<small>'+sub+'</small>'+(mm?'<small class="mm">\uba54\ubaa8 '+esc(mm)+'</small>':'')+'</span>'+
       '<span class="km">'+(st.two?fmt(st.total):'-')+'</span></button>'+
-      (open?'<div class="detail">'+entriesHtml(d.arr)+'</div>':'')+'</li>';
+      (open?'<div class="detail">'+entriesHtml(d.arr)+memoHtml(d.key)+'</div>':'')+'</li>';
   }).join('')+'</ul>';
 }
 
@@ -530,10 +550,10 @@ function csvCell(v){v=String(v==null?'':v);return /[",\n\r]/.test(v)?'"'+v.repla
 function toCsv(rows){return '﻿'+rows.map(function(r){return r.map(csvCell).join(',');}).join('\r\n');}
 function toTsv(rows){return rows.map(function(r){return r.map(function(c){return String(c==null?'':c).replace(/[\t\r\n]+/g,' ');}).join('\t');}).join('\n');}
 function summaryRows(){
-  var rows=[['날짜','요일','출발지','경유지','도착지','출발 계기판(km)','도착 계기판(km)','주행거리(km)','출발 시각','도착 시각']];
+  var rows=[['날짜','요일','출발지','경유지','도착지','출발 계기판(km)','도착 계기판(km)','주행거리(km)','출발 시각','도착 시각','메모']];
   monthDays().forEach(function(d){
     var s=d.st;
-    rows.push([d.key,wd(d.key),s.first.place,s.vias.map(function(v){return v.place;}).join(' / '),s.two?s.last.place:'',s.first.odo,s.two?s.last.odo:'',s.two?s.total:'',hhmm(s.first.ts),s.two?hhmm(s.last.ts):'']);
+    rows.push([d.key,wd(d.key),s.first.place,s.vias.map(function(v){return v.place;}).join(' / '),s.two?s.last.place:'',s.first.odo,s.two?s.last.odo:'',s.two?s.total:'',hhmm(s.first.ts),s.two?hhmm(s.last.ts):'',memos[d.key]||'']);
   });
   return rows;
 }
@@ -577,7 +597,7 @@ $('#x-detail').onclick=function(){if(needData()) saveFile('운행일지_'+monthT
 $('#x-copy').onclick=function(){if(needData()) copyText(toTsv(summaryRows()));};
 $('#b-save').onclick=function(){
   if(!records.length){toast('백업할 기록이 없어요.');return;}
-  var d=new Date(), json=JSON.stringify({app:'unhaengilji',version:1,records:records},null,1);
+  var d=new Date(), json=JSON.stringify({app:'unhaengilji',version:1,records:records,memos:memos},null,1);
   saveFile('운행일지_백업_'+d.getFullYear()+pad(d.getMonth()+1)+pad(d.getDate())+'.json',json,json);
 };
 $('#b-file').addEventListener('change',function(){
@@ -594,7 +614,9 @@ $('#b-file').addEventListener('change',function(){
         if(have[k]) return;
         have[k]=1; records.push({id:r.id||newId(),ts:r.ts,odo:r.odo,place:r.place}); added++;
       });
-      persist(); renderAll(); toast(added+'건을 불러왔어요.');
+      var madded=0;
+      if(j&&j.memos&&typeof j.memos==='object'){Object.keys(j.memos).forEach(function(k){if(!memos[k]&&String(j.memos[k]).trim()){memos[k]=String(j.memos[k]);madded++;}}); saveMemos();}
+      persist(); renderAll(); toast(added+'건을 불러왔어요.'+(madded?' 메모 '+madded+'일치도 가져왔어요.':''));
     }catch(e){toast('백업 파일을 읽지 못했어요.');}
   };
   rd.readAsText(f); this.value='';
@@ -700,8 +722,12 @@ $('#mic').addEventListener('click',function(){
   keyboardMicHint('이 화면에는 음성 인식이 없어요.');
 });
 
+$('#memo-today').addEventListener('input',function(){setMemo(dkey(Date.now()),this.value);});
+$('#log-list').addEventListener('input',function(e){var t=e.target.closest('[data-memo]'); if(t) setMemo(t.getAttribute('data-memo'),t.value);});
+
 /* ---------- 시작 ---------- */
 records=load();
+memos=loadMemos();
 renderAll();
 initDictation();
 try{if('serviceWorker' in navigator&&/^https?:$/.test(location.protocol)) navigator.serviceWorker.register('sw.js').catch(function(){});}catch(e){}
