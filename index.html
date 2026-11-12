@@ -52,6 +52,7 @@ button{cursor:pointer}
 header{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
 h1{margin:0;font-size:22px;font-weight:700;letter-spacing:-.01em}
 .date{color:var(--muted);font-size:14px}
+.ver{font-family:var(--mono);font-size:11px;font-weight:400;color:var(--muted);margin-left:8px;letter-spacing:0}
 .tabs{display:grid;grid-template-columns:1fr 1fr;background:var(--line);border-radius:12px;padding:3px;gap:3px}
 .tabs button{border:0;background:transparent;border-radius:9px;padding:10px;font-weight:500;color:var(--muted)}
 .tabs button[aria-selected="true"]{background:var(--surface);color:var(--ink);font-weight:700;box-shadow:0 1px 2px rgba(0,0,0,.12)}
@@ -121,6 +122,10 @@ h1{margin:0;font-size:22px;font-weight:700;letter-spacing:-.01em}
 .memo-t{width:100%;min-height:76px;padding:10px 12px;font:16px/1.5 var(--sans);border:2px solid var(--line);border-radius:12px;background:var(--surface);color:var(--ink);resize:vertical}
 .memo-t:focus{border-color:var(--accent);outline:none}
 .detail .memo{padding:12px 14px}
+.viaform{display:flex;flex-direction:column;gap:6px;padding:12px 14px;border-top:1px solid var(--line)}
+.viaform input{flex:1;min-width:0;padding:12px;font-size:17px;border:2px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink)}
+.viaform input:focus{border-color:var(--accent);outline:none}
+.viaform .btn{flex:0 0 auto;min-width:76px}
 .dayrow .rt small.mm{color:var(--ink)}
 .tools{display:flex;flex-direction:column;gap:10px}
 .tools h3{margin:0;font-size:15px}
@@ -155,7 +160,7 @@ body{margin:0}
 
 <div class="wrap" id="app">
   <header>
-    <h1>운행일지</h1>
+    <h1>운행일지<small class="ver" id="ver">v12</small></h1>
     <span class="date" id="today-label"></span>
   </header>
 
@@ -308,6 +313,25 @@ function routeText(arr){
   var out=[]; arr.forEach(function(r){if(!out.length||out[out.length-1]!==r.place) out.push(r.place);});
   return out.map(esc).join(' \u2192 ');
 }
+function viaFormHtml(key){
+  return '<form class="viaform" data-via="'+key+'" autocomplete="off"><span class="eyebrow">경유지 추가 (장소와 계기판 숫자)</span>'+
+    '<div class="btnrow"><input type="text" class="via-in" placeholder="예: 광림테크 233612" enterkeyhint="done" autocomplete="off" spellcheck="false" list="places" aria-label="추가할 경유지와 계기판 숫자">'+
+    '<button type="submit" class="btn primary small">추가</button></div><div class="preview via-pv" aria-live="polite"></div></form>';
+}
+function viaTs(key,p){
+  if(p.time){var q=key.split('-');return new Date(+q[0],+q[1]-1,+q[2],p.time.h,p.time.m,0,0).getTime();}
+  var day=(groupDays(records)[key]||[]), before=null, after=null, i;
+  for(i=0;i<day.length;i++){if(day[i].odo<=p.odo) before=day[i]; else if(!after) after=day[i];}
+  if(before&&after) return Math.floor((before.ts+after.ts)/2);
+  if(after) return after.ts-60000;
+  if(before) return before.ts+60000;
+  var q2=key.split('-');return new Date(+q2[0],+q2[1]-1,+q2[2],12,0,0,0).getTime();
+}
+function viaRangeNote(key,p){
+  var day=groupDays(records)[key]||[]; if(day.length<2) return '';
+  if(p.odo<day[0].odo||p.odo>day[day.length-1].odo) return '출발~도착 범위 밖이라 이 기록이 새 '+(p.odo<day[0].odo?'출발':'도착')+'이 돼요.';
+  return '';
+}
 function memoHtml(key){
   return '<label class="memo"><span class="eyebrow">\uba54\ubaa8</span><textarea class="memo-t" data-memo="'+key+'" rows="3" placeholder="예: DMI">'+esc(memos[key]||'')+'</textarea></label>';
 }
@@ -412,7 +436,7 @@ function renderLog(){
       '<span class="dd">'+p[1]+'/'+p[2]+' <small>'+wd(d.key)+'</small></span>'+
       '<span class="rt">'+route+'<small>'+sub+'</small>'+(mm?'<small class="mm">\uba54\ubaa8 '+esc(mm)+'</small>':'')+'</span>'+
       '<span class="km">'+(st.two?fmt(st.total):'-')+'</span></button>'+
-      (open?'<div class="detail">'+entriesHtml(d.arr)+memoHtml(d.key)+'</div>':'')+'</li>';
+      (open?'<div class="detail">'+entriesHtml(d.arr)+viaFormHtml(d.key)+memoHtml(d.key)+'</div>':'')+'</li>';
   }).join('')+'</ul>';
 }
 
@@ -735,6 +759,28 @@ $('#mic').addEventListener('click',function(){
 
 $('#memo-today').addEventListener('input',function(){setMemo(dkey(Date.now()),this.value);});
 $('#log-list').addEventListener('input',function(e){var t=e.target.closest('[data-memo]'); if(t) setMemo(t.getAttribute('data-memo'),t.value);});
+
+$('#log-list').addEventListener('input',function(e){
+  var inp=e.target.closest('.via-in'); if(!inp) return;
+  var f=inp.closest('[data-via]'), pv=f.querySelector('.via-pv'), p=parseEntry(inp.value);
+  if(p.empty){pv.className='preview via-pv';pv.textContent='';return;}
+  if(p.error){pv.className='preview via-pv err';pv.textContent=p.error;return;}
+  var note=viaRangeNote(f.getAttribute('data-via'),p);
+  pv.className='preview via-pv '+(note?'err':'ok');
+  pv.innerHTML='장소 <b>'+esc(p.place)+'</b> · 계기판 <b>'+fmt(p.odo)+'</b> km'+(p.time?' · 시간 <b>'+pad(p.time.h)+':'+pad(p.time.m)+'</b>':'')+(note?'<br>'+esc(note):'');
+});
+$('#log-list').addEventListener('submit',function(e){
+  var f=e.target.closest('[data-via]'); if(!f) return;
+  e.preventDefault();
+  var key=f.getAttribute('data-via'), inp=f.querySelector('.via-in'), pv=f.querySelector('.via-pv'), p=parseEntry(inp.value);
+  if(!p.place){pv.className='preview via-pv err';pv.textContent=p.error||'장소와 계기판 숫자를 입력해 주세요. 예: 광림테크 233612';return;}
+  var note=viaRangeNote(key,p);
+  var rec={id:newId(),ts:viaTs(key,p),place:p.place,odo:p.odo};
+  records.push(rec); persist(); renderAll();
+  toast((note?note+' ':'경유지를 추가했어요 \u00b7 ')+p.place+' '+fmt(p.odo)+' km','되돌리기',function(){
+    records=records.filter(function(r){return r.id!==rec.id;}); persist(); renderAll();
+  });
+});
 
 /* ---------- 시작 ---------- */
 records=load();

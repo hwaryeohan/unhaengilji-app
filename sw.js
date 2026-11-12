@@ -1,5 +1,5 @@
 /* 운행일지 오프라인 캐시. 앱을 고칠 때는 VERSION 숫자를 올리세요. */
-var VERSION = 'unhaengilji-v10';
+var VERSION = 'unhaengilji-v12';
 var CORE = ['./', 'index.html', 'inapp.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png'];
 self.addEventListener('install', function (e) {
   e.waitUntil(caches.open(VERSION).then(function (c) { return c.addAll(CORE); }).then(function () { return self.skipWaiting(); }));
