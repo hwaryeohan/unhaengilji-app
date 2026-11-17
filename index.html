@@ -78,6 +78,10 @@ h1{margin:0;font-size:22px;font-weight:700;letter-spacing:-.01em}
 .btn.mic-big.listening{color:#fff}
 #save-btn{min-height:68px;font-size:19px}
 .field select{padding:10px 12px;font-size:16px;border:2px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink)}
+.remind{background:#fff4d6;border:2px solid #e0a800;border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:10px;color:#4a3600}
+.remind b{font-size:17px}
+.remind .btnrow{display:flex;gap:8px}
+.remind .btn{flex:1;min-height:48px}
 .waitrow{display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:14px;color:var(--muted)}
 .btn:disabled{opacity:.45;cursor:default}
 .btn.small{flex:none;min-height:42px;font-weight:500;font-size:15px}
@@ -180,7 +184,7 @@ body{margin:0}
 
 <div class="wrap" id="app">
   <header>
-    <h1>운행일지<small class="ver" id="ver">v14</small></h1>
+    <h1>운행일지<small class="ver" id="ver">v15</small></h1>
     <span class="date" id="today-label"></span>
   </header>
 
@@ -193,6 +197,7 @@ body{margin:0}
 
   <!-- 오늘 -->
   <section id="view-today" class="wrap" role="tabpanel" aria-labelledby="tab-today" style="gap:16px">
+    <div id="remind" role="status" aria-live="polite"></div>
     <div class="tile" id="today-tile"></div>
 
     <form class="entry" id="entry-form" autocomplete="off">
@@ -210,6 +215,8 @@ body{margin:0}
       <div class="chips" id="chips" aria-label="최근 장소"></div>
       <div class="waitrow"><label for="wait-sel">말을 멈추고 저장하기까지 기다리는 시간</label>
         <select id="wait-sel" aria-label="저장 대기 시간"><option value="1.5">1.5초</option><option value="3">3초</option><option value="5">5초</option><option value="8">8초</option><option value="12">12초</option></select></div>
+      <div class="waitrow"><label for="rm-on" style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="rm-on" style="width:22px;height:22px"> 도착 기록 알림</label>
+        <select id="rm-min" aria-label="알림 기준 시간"><option value="10">마지막 기록 10분 뒤</option><option value="20">20분 뒤</option><option value="30">30분 뒤</option><option value="60">1시간 뒤</option><option value="120">2시간 뒤</option></select></div>
       <div class="tip" id="mic-tip">입력칸을 누르고 키보드의 마이크 버튼으로 말해도 돼요. 말한 뒤 「기록」을 누르세요.</div>
     </form>
 
@@ -482,7 +489,7 @@ function renderChips(){
   $('#places').innerHTML=opts;
 }
 function renderAll(){
-  renderToday(); renderLog(); renderChips(); updatePreview();
+  renderToday(); renderLog(); renderChips(); updatePreview(); if(rm) renderRemind();
 }
 
 /* ---------- 입력 ---------- */
@@ -843,6 +850,32 @@ $('#addday-form').addEventListener('submit',function(e){
   });
 });
 
+/* ---------- 도착 기록 알림 ---------- */
+var rm={on:true,min:30};
+try{var rj=JSON.parse(localStorage.getItem('unhaengilji.remind')||'null'); if(rj){rm.on=rj.on!==false; if(rj.min>0) rm.min=rj.min;}}catch(e){}
+function saveRm(){try{localStorage.setItem('unhaengilji.remind',JSON.stringify(rm));}catch(e){}}
+function getDismiss(){try{return localStorage.getItem('unhaengilji.remind.off')||'';}catch(e){return '';}}
+function renderRemind(){
+  var box=$('#remind'); if(!box) return;
+  var key=dkey(Date.now()), arr=groupDays(records)[key]||[];
+  if(!rm.on||!arr.length||getDismiss()===key){box.innerHTML='';box.className='';return;}
+  var last=arr.reduce(function(a,r){return r.ts>a.ts?r:a;},arr[0]);
+  var mins=Math.floor((Date.now()-last.ts)/60000);
+  if(mins<rm.min){box.innerHTML='';box.className='';return;}
+  var ago=mins>=60?Math.floor(mins/60)+'시간'+(mins%60?' '+(mins%60)+'분':''):mins+'분';
+  box.className='remind';
+  box.innerHTML='<b>도착 기록 하셨나요?</b><span>마지막 기록: '+esc(last.place)+' '+fmt(last.odo)+' km ('+ago+' 전)</span>'+
+    '<div class="btnrow"><button type="button" class="btn primary" id="rm-go">지금 기록하기</button><button type="button" class="btn" id="rm-off">오늘은 끝났어요</button></div>';
+  $('#rm-go').onclick=function(){$('#entry').scrollIntoView({block:'center'});var m=$('#mic'); if(m) m.click();};
+  $('#rm-off').onclick=function(){try{localStorage.setItem('unhaengilji.remind.off',key);}catch(e){} renderRemind();};
+}
+(function(){
+  var on=$('#rm-on'), mn=$('#rm-min'); on.checked=rm.on; mn.value=String(rm.min); if(mn.value!==String(rm.min)){mn.value='30';rm.min=30;}
+  mn.disabled=!rm.on;
+  on.addEventListener('change',function(){rm.on=on.checked;mn.disabled=!rm.on;saveRm();renderRemind();toast(rm.on?'도착 기록 알림을 켰어요.':'도착 기록 알림을 껐어요.');});
+  mn.addEventListener('change',function(){rm.min=parseInt(mn.value,10)||30;saveRm();renderRemind();toast('마지막 기록 '+rm.min+'분 뒤부터 알려 드려요.');});
+})();
+
 /* ---------- 시작 ---------- */
 records=load();
 memos=loadMemos();
@@ -850,7 +883,9 @@ renderAll();
 initDictation();
 try{if('serviceWorker' in navigator&&/^https?:$/.test(location.protocol)) navigator.serviceWorker.register('sw.js').catch(function(){});}catch(e){}
 if(SR){$('#mic-tip').textContent='말하기를 누르고 띵 소리가 난 뒤에 「금곡역 4만 1230」처럼 한 번에 말하세요. 숫자가 빠지면 한 번 더 띵 소리가 나고 숫자만 말하면 돼요.';}
-document.addEventListener('visibilitychange',function(){if(!document.hidden) renderToday();});
+document.addEventListener('visibilitychange',function(){if(!document.hidden){renderToday();renderRemind();}});
+setInterval(renderRemind,60000);
+renderRemind();
 })();
 </script>
 
