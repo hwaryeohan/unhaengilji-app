@@ -82,6 +82,8 @@ h1{margin:0;font-size:22px;font-weight:700;letter-spacing:-.01em}
 .remind b{font-size:17px}
 .remind .btnrow{display:flex;gap:8px}
 .remind .btn{flex:1;min-height:48px}
+.costgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.costgrid input{padding:10px;font-size:16px;border:2px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);width:100%;min-width:0}
 .waitrow{display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:14px;color:var(--muted)}
 .btn:disabled{opacity:.45;cursor:default}
 .btn.small{flex:none;min-height:42px;font-weight:500;font-size:15px}
@@ -184,7 +186,7 @@ body{margin:0}
 
 <div class="wrap" id="app">
   <header>
-    <h1>운행일지<small class="ver" id="ver">v15</small></h1>
+    <h1>운행일지<small class="ver" id="ver">v16</small></h1>
     <span class="date" id="today-label"></span>
   </header>
 
@@ -254,6 +256,9 @@ body{margin:0}
         <button class="btn small" id="x-detail">상세 기록 저장 (CSV)</button>
         <button class="btn small" id="x-copy">일별 표 복사</button>
       </div>
+      <h3>SFA 입력용</h3>
+      <div class="btnrow"><button class="btn small primary" id="x-sfa">SFA 입력용 파일 저장 (구간별 CSV)</button></div>
+      <div class="tip">출발→경유→도착을 구간마다 한 줄씩 나눠 SFA 표와 같은 순서로 저장해요. PC의 SFA입력 매크로가 이 파일을 읽어요. 통행료·주유 같은 경비는 기록을 눌러 「고치기」에서 도착 쪽 기록에 넣어 두세요.</div>
       <div class="tip">CSV는 엑셀에서 바로 열려요. 복사한 표는 엑셀이나 구글 시트에 붙여 넣으면 칸에 맞춰 들어가요.</div>
       <textarea class="copybox" id="copybox" readonly hidden aria-label="복사할 내용"></textarea>
       <h3>백업</h3>
@@ -273,6 +278,15 @@ body{margin:0}
     <label class="field">장소<input type="text" id="e-place" autocomplete="off"></label>
     <label class="field">계기판 (km)<input type="text" id="e-odo" inputmode="numeric" autocomplete="off"></label>
     <label class="field">날짜와 시간<input type="datetime-local" id="e-time"></label>
+    <div id="e-costs">
+      <div class="eyebrow" style="margin-bottom:6px">이 장소까지 오는 구간의 경비 (원, 없으면 비워두세요)</div>
+      <div class="costgrid">
+        <label class="field">주유금액<input type="text" id="e-fuel" inputmode="numeric" autocomplete="off"></label>
+        <label class="field">통행료<input type="text" id="e-toll" inputmode="numeric" autocomplete="off"></label>
+        <label class="field">주차료<input type="text" id="e-park" inputmode="numeric" autocomplete="off"></label>
+        <label class="field">기타<input type="text" id="e-etc" inputmode="numeric" autocomplete="off"></label>
+      </div>
+    </div>
     <div class="preview err" id="e-err" aria-live="polite"></div>
     <div class="btnrow">
       <button type="button" class="btn danger" id="e-del">삭제</button>
@@ -420,7 +434,8 @@ function entriesHtml(arr){
     var role=i===0?'start':(i===arr.length-1?'end':'via');
     var label=role==='start'?'출발':(role==='end'?'도착':'경유');
     var seg=i>0?r.odo-arr[i-1].odo:null;
-    var segHtml=seg===null?'<small>&nbsp;</small>':'<small class="'+(seg<0?'neg':'')+'">'+(seg>=0?'+':'')+fmt(seg)+' km'+(seg<0?' 확인':'')+'</small>';
+    var ct=i>0&&r.cost?(r.cost.fuel||0)+(r.cost.toll||0)+(r.cost.park||0)+(r.cost.etc||0):0;
+    var segHtml=seg===null?'<small>&nbsp;</small>':'<small class="'+(seg<0?'neg':'')+'">'+(seg>=0?'+':'')+fmt(seg)+' km'+(seg<0?' 확인':'')+(ct?' · 경비 '+fmt(ct):'')+'</small>';
     return '<li><button type="button" class="row" data-id="'+esc(r.id)+'" aria-label="'+esc(label+' '+r.place+' '+r.odo+'킬로, 고치기')+'">'+
       '<span class="t">'+hhmm(r.ts)+'</span>'+
       '<span><span class="place">'+esc(r.place)+'</span><span class="badge '+role+'">'+label+'</span>'+(bad[r.id]?'<span class="badge warn">시간 확인</span>':'')+'</span>'+
@@ -584,6 +599,8 @@ function openEdit(id){
   var r=records.filter(function(x){return x.id===id;})[0]; if(!r) return;
   editId=id; delArmed=false;
   $('#e-place').value=r.place; $('#e-odo').value=r.odo; $('#e-time').value=localInput(r.ts);
+  var c=r.cost||{}; ['fuel','toll','park','etc'].forEach(function(k){$('#e-'+k).value=c[k]||'';});
+  var dayArr=groupDays(records)[dkey(r.ts)]||[]; $('#e-costs').hidden=!!(dayArr.length&&dayArr[0].id===id);
   $('#e-err').textContent=''; $('#e-del').textContent='삭제';
   $('#sheet').hidden=false; $('#e-place').focus();
 }
@@ -601,7 +618,10 @@ $('#edit-form').addEventListener('submit',function(e){
   if(!place){$('#e-err').textContent='장소를 입력해 주세요.';return;}
   if(!isFinite(odo)||odo<=0){$('#e-err').textContent='계기판 숫자를 확인해 주세요.';return;}
   if(!isFinite(ts)){$('#e-err').textContent='날짜와 시간을 확인해 주세요.';return;}
-  records.forEach(function(r){if(r.id===editId){r.place=place;r.odo=odo;r.ts=ts;}});
+  var cost={}, bad=false;
+  ['fuel','toll','park','etc'].forEach(function(k){var t=$('#e-'+k).value.trim(); if(!t) return; var n=evalNum(t); if(!isFinite(n)||n<0){bad=true;return;} if(n>0) cost[k]=n;});
+  if(bad){$('#e-err').textContent='경비는 숫자로 입력해 주세요.';return;}
+  records.forEach(function(r){if(r.id===editId){r.place=place;r.odo=odo;r.ts=ts; if(Object.keys(cost).length) r.cost=cost; else delete r.cost;}});
   persist(); closeEdit(); renderAll(); toast('고쳤어요.');
 });
 
@@ -624,6 +644,16 @@ function detailRows(){
       var role=i===0?'출발':(i===d.arr.length-1?'도착':'경유');
       rows.push([d.key,i+1,role,hhmm(r.ts),r.place,r.odo,i>0?r.odo-d.arr[i-1].odo:'']);
     });
+  });
+  return rows;
+}
+function sfaRows(){
+  var rows=[['일자','출발지','경유지','도착지','출발지 계기','도착지 계기','운행거리','주유금액','통행료','주차료','기타']];
+  monthDays().forEach(function(d){
+    for(var i=1;i<d.arr.length;i++){
+      var a=d.arr[i-1], b=d.arr[i], c=b.cost||{};
+      rows.push([d.key,a.place,'',b.place,a.odo,b.odo,b.odo-a.odo,c.fuel||'',c.toll||'',c.park||'',c.etc||'']);
+    }
   });
   return rows;
 }
@@ -654,6 +684,10 @@ function saveFile(name,data,fallbackText){
 function needData(){if(!monthDays().length){toast('이 달에는 내보낼 기록이 없어요.');return false;}return true;}
 $('#x-summary').onclick=function(){if(needData()) saveFile('운행일지_'+monthTag()+'_일별.csv',toCsv(summaryRows()),toTsv(summaryRows()));};
 $('#x-detail').onclick=function(){if(needData()) saveFile('운행일지_'+monthTag()+'_상세.csv',toCsv(detailRows()),toTsv(detailRows()));};
+$('#x-sfa').onclick=function(){
+  var rows=sfaRows(); if(rows.length<2){toast('이 달에는 구간이 없어요. 출발과 도착 기록이 있어야 해요.');return;}
+  saveFile('SFA입력_'+monthTag()+'.csv',toCsv(rows),toTsv(rows));
+};
 $('#x-copy').onclick=function(){if(needData()) copyText(toTsv(summaryRows()));};
 $('#b-save').onclick=function(){
   if(!records.length){toast('백업할 기록이 없어요.');return;}
@@ -672,7 +706,7 @@ $('#b-file').addEventListener('change',function(){
         if(!validRec(r)) return;
         var k=r.ts+'|'+r.odo+'|'+r.place;
         if(have[k]) return;
-        have[k]=1; records.push({id:r.id||newId(),ts:r.ts,odo:r.odo,place:r.place}); added++;
+        have[k]=1; var nr={id:r.id||newId(),ts:r.ts,odo:r.odo,place:r.place}; if(r.cost&&typeof r.cost==='object') nr.cost=r.cost; records.push(nr); added++;
       });
       var madded=0;
       if(j&&j.memos&&typeof j.memos==='object'){Object.keys(j.memos).forEach(function(k){if(!memos[k]&&String(j.memos[k]).trim()){memos[k]=String(j.memos[k]);madded++;}}); saveMemos();}
