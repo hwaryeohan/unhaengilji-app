@@ -119,6 +119,12 @@ h1{margin:0;font-size:22px;font-weight:700;letter-spacing:-.01em}
 .dayrow .dd{display:flex;flex-direction:column;line-height:1.25}
 .dayrow .dd b{font-family:var(--mono);font-size:18px;font-weight:600}
 .dayrow .dd small{font-family:var(--sans);color:var(--muted);font-weight:400;font-size:12px}
+.searchbar{display:flex;gap:8px;align-items:center}
+.searchbar input{flex:1;min-width:0;padding:12px;font-size:17px;border:2px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink)}
+.searching .monthbar,.searching .stats,.searching .tools,.searching #addday,.searching #log-list{display:none}
+.scount{margin:4px 2px 10px;font-size:15px;color:var(--ink2)}
+#search-res mark{background:#FFE08A;color:inherit;border-radius:4px;padding:0 2px}
+#search-res .dd small.yr{font-size:12px}
 .addday{background:var(--surface);border:1px solid var(--line);border-radius:14px}
 .addday summary{padding:14px;font-weight:700;cursor:pointer;list-style:none}
 .addday summary::-webkit-details-marker{display:none}
@@ -186,7 +192,7 @@ body{margin:0}
 
 <div class="wrap" id="app">
   <header>
-    <h1>운행일지<small class="ver" id="ver">v16</small></h1>
+    <h1>운행일지<small class="ver" id="ver">v18</small></h1>
     <span class="date" id="today-label"></span>
   </header>
 
@@ -229,6 +235,11 @@ body{margin:0}
 
   <!-- 월별 기록 -->
   <section id="view-log" class="wrap" role="tabpanel" aria-labelledby="tab-log" hidden style="gap:16px">
+    <div class="searchbar">
+      <input type="search" id="q" placeholder="메모·장소 검색 (예: 엔진오일, 유니스트)" enterkeyhint="search" autocomplete="off" spellcheck="false" aria-label="메모와 장소 검색">
+      <button type="button" class="btn small" id="q-clear" hidden>지우기</button>
+    </div>
+    <div id="search-res" hidden></div>
     <div class="monthbar">
       <button class="btn small" id="m-prev" aria-label="이전 달">‹ 이전</button>
       <h2 id="m-label"></h2>
@@ -257,7 +268,7 @@ body{margin:0}
         <button class="btn small" id="x-copy">일별 표 복사</button>
       </div>
       <h3>SFA 입력용</h3>
-      <div class="btnrow"><button class="btn small primary" id="x-sfa">SFA 입력용 파일 저장 (구간별 CSV)</button></div>
+      <div class="btnrow"><button class="btn small primary" id="x-sfax">SFA 입력용 엑셀 저장 (.xlsx)</button><button class="btn small" id="x-sfa">CSV로 저장</button></div>
       <div class="tip">출발→경유→도착을 구간마다 한 줄씩 나눠 SFA 표와 같은 순서로 저장해요. PC의 SFA입력 매크로가 이 파일을 읽어요. 통행료·주유 같은 경비는 기록을 눌러 「고치기」에서 도착 쪽 기록에 넣어 두세요.</div>
       <div class="tip">CSV는 엑셀에서 바로 열려요. 복사한 표는 엑셀이나 구글 시트에 붙여 넣으면 칸에 맞춰 들어가요.</div>
       <textarea class="copybox" id="copybox" readonly hidden aria-label="복사할 내용"></textarea>
@@ -504,7 +515,7 @@ function renderChips(){
   $('#places').innerHTML=opts;
 }
 function renderAll(){
-  renderToday(); renderLog(); renderChips(); updatePreview(); if(rm) renderRemind();
+  renderToday(); renderLog(); renderChips(); updatePreview(); if(rm) renderRemind(); if($('#q')&&$('#q').value) runSearch();
 }
 
 /* ---------- 입력 ---------- */
@@ -657,6 +668,53 @@ function sfaRows(){
   });
   return rows;
 }
+function xmlEsc(t){return String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+var crcT=null;
+function crc32(u){
+  if(!crcT){crcT=[];for(var n=0;n<256;n++){var c=n;for(var k=0;k<8;k++) c=(c&1)?(0xEDB88320^(c>>>1)):(c>>>1);crcT[n]=c>>>0;}}
+  var crc=0xFFFFFFFF; for(var i=0;i<u.length;i++) crc=crcT[(crc^u[i])&255]^(crc>>>8);
+  return (crc^0xFFFFFFFF)>>>0;
+}
+function zipStore(files){
+  var enc=new TextEncoder(), chunks=[], central=[], offset=0;
+  function u16(v){return [v&255,(v>>8)&255];}
+  function u32(v){return [v&255,(v>>8)&255,(v>>16)&255,(v>>>24)&255];}
+  files.forEach(function(f){
+    var name=enc.encode(f.name), data=enc.encode(f.text), crc=crc32(data);
+    var head=[].concat(u32(0x04034b50),u16(20),u16(0x0800),u16(0),u16(0),u16(0x21),u32(crc),u32(data.length),u32(data.length),u16(name.length),u16(0));
+    chunks.push(new Uint8Array(head),name,data);
+    central.push({name:name,crc:crc,size:data.length,off:offset});
+    offset+=head.length+name.length+data.length;
+  });
+  var cdStart=offset, cdLen=0;
+  central.forEach(function(c){
+    var h=[].concat(u32(0x02014b50),u16(20),u16(20),u16(0x0800),u16(0),u16(0),u16(0x21),u32(c.crc),u32(c.size),u32(c.size),u16(c.name.length),u16(0),u16(0),u16(0),u16(0),u32(0),u32(c.off));
+    chunks.push(new Uint8Array(h),c.name); cdLen+=h.length+c.name.length;
+  });
+  chunks.push(new Uint8Array([].concat(u32(0x06054b50),u16(0),u16(0),u16(central.length),u16(central.length),u32(cdLen),u32(cdStart),u16(0))));
+  var total=0; chunks.forEach(function(c){total+=c.length;});
+  var out=new Uint8Array(total), p=0; chunks.forEach(function(c){out.set(c,p);p+=c.length;});
+  return out;
+}
+function colName(i){return String.fromCharCode(65+i);}
+function toXlsx(rows){
+  var sd=rows.map(function(r,ri){
+    return '<row r="'+(ri+1)+'">'+r.map(function(v,ci){
+      var ref=colName(ci)+(ri+1);
+      if(v===''||v==null) return '';
+      if(typeof v==='number'&&isFinite(v)) return '<c r="'+ref+'"><v>'+v+'</v></c>';
+      return '<c r="'+ref+'" t="inlineStr"><is><t xml:space="preserve">'+xmlEsc(v)+'</t></is></c>';
+    }).join('')+'</row>';
+  }).join('');
+  var X='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
+  return zipStore([
+    {name:'[Content_Types].xml',text:X+'<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>'},
+    {name:'_rels/.rels',text:X+'<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>'},
+    {name:'xl/workbook.xml',text:X+'<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="SFA" sheetId="1" r:id="rId1"/></sheets></workbook>'},
+    {name:'xl/_rels/workbook.xml.rels',text:X+'<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>'},
+    {name:'xl/worksheets/sheet1.xml',text:X+'<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>'+sd+'</sheetData></worksheet>'}
+  ]);
+}
 function monthTag(){return monthRef.getFullYear()+'-'+pad(monthRef.getMonth()+1);}
 function copyText(text){
   var box=$('#copybox');
@@ -668,8 +726,8 @@ function copyText(text){
 function saveFile(name,data,fallbackText){
   if(!dl){
     try{
-      var mime=/\.json$/.test(name)?'application/json':'text/csv';
-      var url=URL.createObjectURL(new Blob([data],{type:mime+';charset=utf-8'}));
+      var isX=/\.xlsx$/.test(name), mime=isX?'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':(/\.json$/.test(name)?'application/json':'text/csv');
+      var url=URL.createObjectURL(new Blob([data],{type:isX?mime:mime+';charset=utf-8'}));
       var a=document.createElement('a'); a.href=url; a.download=name; document.body.appendChild(a); a.click(); a.remove();
       setTimeout(function(){URL.revokeObjectURL(url);},4000);
       toast('파일을 저장했어요. 다운로드 폴더를 확인하세요.');
@@ -687,6 +745,10 @@ $('#x-detail').onclick=function(){if(needData()) saveFile('운행일지_'+monthT
 $('#x-sfa').onclick=function(){
   var rows=sfaRows(); if(rows.length<2){toast('이 달에는 구간이 없어요. 출발과 도착 기록이 있어야 해요.');return;}
   saveFile('SFA입력_'+monthTag()+'.csv',toCsv(rows),toTsv(rows));
+};
+$('#x-sfax').onclick=function(){
+  var rows=sfaRows(); if(rows.length<2){toast('이 달에는 구간이 없어요. 출발과 도착 기록이 있어야 해요.');return;}
+  saveFile('SFA입력_'+monthTag()+'.xlsx',toXlsx(rows),toTsv(rows));
 };
 $('#x-copy').onclick=function(){if(needData()) copyText(toTsv(summaryRows()));};
 $('#b-save').onclick=function(){
@@ -882,6 +944,55 @@ $('#addday-form').addEventListener('submit',function(e){
   toast((existed?'이미 기록이 있는 날이라 계기판 순서로 넣었어요 \u00b7 ':'날짜를 추가했어요. 펼친 곳에서 경유지와 도착을 더하세요 \u00b7 ')+p.place+' '+fmt(p.odo)+' km','되돌리기',function(){
     records=records.filter(function(r){return r.id!==rec.id;}); persist(); renderAll();
   });
+});
+
+/* ---------- 검색 ---------- */
+function hl(text,terms){
+  var re=new RegExp('('+terms.map(function(t){return t.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');}).join('|')+')','gi');
+  return String(text).split(re).map(function(p,i){return i%2?'<mark>'+esc(p)+'</mark>':esc(p);}).join('');
+}
+function memoSnippet(memo,terms){
+  var lines=String(memo).split(/\n/).filter(function(l){return l.trim();});
+  var hit=lines.filter(function(l){var low=l.toLowerCase();return terms.some(function(t){return low.indexOf(t)>=0;});});
+  var use=(hit.length?hit:lines).slice(0,2).map(function(l){return l.length>60?l.slice(0,60)+'…':l;});
+  return use.join(' / ');
+}
+function runSearch(){
+  var q=$('#q').value.trim(), view=$('#view-log'), host=$('#search-res');
+  $('#q-clear').hidden=!$('#q').value;
+  if(!q){view.classList.remove('searching');host.hidden=true;host.innerHTML='';return;}
+  view.classList.add('searching'); host.hidden=false;
+  var terms=q.toLowerCase().split(/\s+/).filter(Boolean);
+  var groups=groupDays(records), keys={};
+  Object.keys(groups).forEach(function(k){keys[k]=1;});
+  Object.keys(memos).forEach(function(k){keys[k]=1;});
+  var hits=[];
+  Object.keys(keys).sort().reverse().forEach(function(k){
+    var arr=groups[k]||[], memo=memos[k]||'';
+    var hay=(memo+' '+arr.map(function(r){return r.place;}).join(' ')).toLowerCase();
+    if(terms.every(function(t){return hay.indexOf(t)>=0;})) hits.push({key:k,arr:arr,memo:memo});
+  });
+  if(!hits.length){host.innerHTML='<div class="empty"><span>‘'+esc(q)+'’ 에 맞는 기록이 없어요.</span></div>';return;}
+  host.innerHTML='<div class="scount">'+hits.length+'일 찾았어요 · 누르면 그 날짜로 이동해요</div><ul class="days">'+hits.map(function(h){
+    var p=h.key.split('-'), arr=h.arr;
+    var route=arr.length?hl(routeText(arr),terms):'<span>기록 없음</span>';
+    var km=arr.length>1?fmt(arr[arr.length-1].odo-arr[0].odo):'-';
+    var mm=h.memo.trim()?'<small class="mm">메모 '+hl(memoSnippet(h.memo,terms),terms)+'</small>':'';
+    return '<li><button type="button" class="dayrow" data-sday="'+h.key+'">'+
+      '<span class="dd"><b>'+p[1]+'/'+p[2]+'</b><small class="yr">'+p[0]+' · '+wd(h.key)+'</small></span>'+
+      '<span class="rt">'+route+mm+'</span><span class="km">'+km+'</span></button></li>';
+  }).join('')+'</ul>';
+}
+$('#q').addEventListener('input',runSearch);
+$('#q').addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();this.blur();}});
+$('#q-clear').onclick=function(){$('#q').value='';runSearch();$('#q').focus();};
+$('#search-res').addEventListener('click',function(e){
+  var b=e.target.closest('[data-sday]'); if(!b) return;
+  var k=b.getAttribute('data-sday'), p=k.split('-');
+  monthRef=new Date(+p[0],+p[1]-1,1); openDay=k;
+  $('#q').value=''; runSearch(); renderLog();
+  if($('#addday').open) syncAddDate();
+  var el=document.querySelector('#log-list li.open'); if(el) el.scrollIntoView({block:'start'});
 });
 
 /* ---------- 도착 기록 알림 ---------- */
