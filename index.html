@@ -192,7 +192,7 @@ body{margin:0}
 
 <div class="wrap" id="app">
   <header>
-    <h1>운행일지<small class="ver" id="ver">v18</small></h1>
+    <h1>운행일지<small class="ver" id="ver">v19</small></h1>
     <span class="date" id="today-label"></span>
   </header>
 
@@ -519,8 +519,51 @@ function renderAll(){
 }
 
 /* ---------- 입력 ---------- */
+/* ---------- 경비 말하기 ("주차비 3천원") ---------- */
+var COST_KINDS=[
+  {k:'park',name:'주차료',strict:/주차\s*(비|료|요금)/,loose:/주차/},
+  {k:'toll',name:'통행료',strict:/통행\s*(료|비)|톨\s*게이트\s*비|하이패스\s*(비|요금)/,loose:/통행|톨\s*게이트|하이패스/},
+  {k:'fuel',name:'주유금액',strict:/주유\s*(비|금액|값|대)|기름\s*값/,loose:/주유|기름/},
+  {k:'etc',name:'기타',strict:/기타\s*(경비|비용|금액)/,loose:/기타/}
+];
+function parseCost(raw){
+  var s0=String(raw||'').replace(/ /g,' ').trim(), i, kd=null, kw=null;
+  if(!s0) return null;
+  for(i=0;i<COST_KINDS.length;i++){
+    var c=COST_KINDS[i];
+    if(c.strict.test(s0)||(c.loose.test(s0)&&/원/.test(s0))){kd=c;kw=c.strict.test(s0)?c.strict:c.loose;break;}
+  }
+  if(!kd) return null;
+  var rest=s0.replace(kw,' ');
+  var runs=rest.match(/[0-9영공일이삼사오육칠팔구십백천만,]+(?:\s+[0-9영공일이삼사오육칠팔구십백천만,]+)*/g)||[];
+  var best='';
+  runs.forEach(function(r){if(r.replace(/[\s,]/g,'').length>best.replace(/[\s,]/g,'').length) best=r;});
+  if(!best) return {error:kd.name+' 금액을 같이 말해 주세요. 예: '+kd.name.replace('주유금액','주유비')+' 3천원'};
+  var amt=evalNum(best);
+  if(!isFinite(amt)||amt<100||amt>9999999) return {error:'금액을 원 단위로 말해 주세요. 예: '+kd.name.replace('주유금액','주유비')+' 3천원'};
+  return {kind:kd.k,name:kd.name,amount:amt};
+}
+function applyCost(pc){
+  if(pc.error){toast(pc.error);return;}
+  var arr=groupDays(records)[dkey(Date.now())]||[];
+  if(arr.length<2){toast('경비는 도착 기록이 있어야 넣을 수 있어요. 먼저 도착 장소와 계기판을 기록해 주세요.');return;}
+  var rec=arr[arr.length-1], prev=arr[arr.length-2];
+  var had=rec.cost&&rec.cost[pc.kind]?rec.cost[pc.kind]:0, old=rec.cost?JSON.parse(JSON.stringify(rec.cost)):null;
+  rec.cost=rec.cost||{}; rec.cost[pc.kind]=pc.amount; persist();
+  $('#entry').value=''; finalText=''; renderAll();
+  toast(pc.name+' '+fmt(pc.amount)+'원을 넣었어요 · '+prev.place+' → '+rec.place+(had&&had!==pc.amount?' (기존 '+fmt(had)+'원을 바꿨어요)':''),'되돌리기',function(){
+    if(old) rec.cost=old; else delete rec.cost; persist(); renderAll();
+  });
+}
 function updatePreview(){
-  var v=$('#entry').value, p=parseEntry(v), box=$('#preview'), btn=$('#save-btn');
+  var v=$('#entry').value, p=parseEntry(v), box=$('#preview'), btn=$('#save-btn'), pc=parseCost(v);
+  if(pc){
+    if(pc.error){box.className='preview err';box.textContent=pc.error;btn.disabled=true;return;}
+    var ta=groupDays(records)[dkey(Date.now())]||[];
+    box.className='preview ok';
+    box.innerHTML='<b>'+pc.name+' '+fmt(pc.amount)+'원</b>'+(ta.length>1?' \u2192 \uc624\ub298 \ub9c8\uc9c0\ub9c9 \uad6c\uac04('+esc(ta[ta.length-2].place)+' \u2192 '+esc(ta[ta.length-1].place)+')\uc5d0 \ub123\uc5b4\uc694':' \u2192 \ub3c4\ucc29 \uae30\ub85d\uc774 \uc788\uc5b4\uc57c \ub123\uc744 \uc218 \uc788\uc5b4\uc694');
+    btn.disabled=false;return;
+  }
   if(p.empty){box.className='preview';box.textContent='';btn.disabled=true;return;}
   if(p.error){box.className='preview err';box.textContent=p.error;btn.disabled=true;return;}
   box.className='preview ok';
@@ -562,6 +605,8 @@ function commit(p,mode){
 }
 $('#entry-form').addEventListener('submit',function(e){
   e.preventDefault();
+  var pc=parseCost($('#entry').value);
+  if(pc){applyCost(pc);return;}
   var p=parseEntry($('#entry').value);
   if(p.place) commit(p);
 });
@@ -790,6 +835,13 @@ try{var ws=parseFloat(localStorage.getItem('unhaengilji.wait')); if(ws>0) waitSe
 function scheduleAuto(){
   clearTimeout(autoTimer);
   autoTimer=setTimeout(function(){
+    var pc=parseCost(finalText);
+    if(pc){
+      if(dict&&dict.active()) dict.stop();
+      stopListen();
+      applyCost(pc);
+      return;
+    }
     var p=parseEntry(finalText);
     if(p.place){
       if(dict&&dict.active()) dict.stop();
@@ -808,7 +860,7 @@ function initDictation(){
     window.claude.use('dictation').then(function(d){
       if(!d) return;
       dict=d;
-      $('#mic-tip').textContent='말하기를 누르고 띵 소리가 난 뒤에 「금곡역 4만 1230」처럼 한 번에 말하세요. 숫자가 빠지면 한 번 더 띵 소리가 나고 숫자만 말하면 돼요.';
+      $('#mic-tip').textContent='말하기를 누르고 띵 소리가 난 뒤에 「금곡역 4만 1230」처럼 한 번에 말하세요. 숫자가 빠지면 한 번 더 띵 소리가 나고 숫자만 말하면 돼요. 경비는 「주차비 3천원」처럼 말하면 오늘 마지막 구간에 들어가요.';
       d.onState(function(e){setMic(e.state==='listening'||e.state==='starting');});
       d.onPartial(function(e){ $('#entry').value=(finalText+' '+e.text).trim(); updatePreview(); });
       d.onFinal(function(e){ finalText=(finalText+e.text).trim(); $('#entry').value=finalText; updatePreview(); scheduleAuto(); });
@@ -858,15 +910,15 @@ function beginRec(){
       keyboardMicHint(e.error==='not-allowed'||e.error==='service-not-allowed'?'이 화면에서는 마이크를 쓸 수 없어요.':'음성 인식이 안 됐어요.');
     };
     rec.onend=function(){
-      var was=wantListen, cur=$('#entry').value.trim(), p=parseEntry(cur);
-      if(was&&cur&&!p.place&&restarts<2){
+      var was=wantListen, cur=$('#entry').value.trim(), p=parseEntry(cur), pcmd=parseCost(cur);
+      if(was&&cur&&!p.place&&!pcmd&&restarts<2){
         restarts++; finalText=cur;
         $('#mic-label').textContent='띵 소리 뒤에 숫자를 말하세요';
         setTimeout(function(){if(wantListen) beginRec();},100);
         return;
       }
       wantListen=false; setMic(false);
-      if(was&&cur&&!p.place) toast('숫자가 안 들어왔어요. 말하기를 다시 누르고 숫자만 말해도 돼요.');
+      if(was&&cur&&!p.place&&!pcmd) toast('숫자가 안 들어왔어요. 말하기를 다시 누르고 숫자만 말해도 돼요.');
     };
     rec.start();
   }catch(e){wantListen=false; setMic(false); keyboardMicHint('이 화면에서는 음성 인식을 쓸 수 없어요.');}
@@ -1027,7 +1079,7 @@ memos=loadMemos();
 renderAll();
 initDictation();
 try{if('serviceWorker' in navigator&&/^https?:$/.test(location.protocol)) navigator.serviceWorker.register('sw.js').catch(function(){});}catch(e){}
-if(SR){$('#mic-tip').textContent='말하기를 누르고 띵 소리가 난 뒤에 「금곡역 4만 1230」처럼 한 번에 말하세요. 숫자가 빠지면 한 번 더 띵 소리가 나고 숫자만 말하면 돼요.';}
+if(SR){$('#mic-tip').textContent='말하기를 누르고 띵 소리가 난 뒤에 「금곡역 4만 1230」처럼 한 번에 말하세요. 숫자가 빠지면 한 번 더 띵 소리가 나고 숫자만 말하면 돼요. 경비는 「주차비 3천원」처럼 말하면 오늘 마지막 구간에 들어가요.';}
 document.addEventListener('visibilitychange',function(){if(!document.hidden){renderToday();renderRemind();}});
 setInterval(renderRemind,60000);
 renderRemind();
